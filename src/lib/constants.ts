@@ -37,6 +37,12 @@ export const SLOTS_PER_DAY = MINUTES_PER_DAY / SLOT_MINUTES;
 
 export const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
+/** Width of the left-hand time gutter column, in px. */
+export const GUTTER_WIDTH = 56;
+
+/** Height of the day-name header row, in px. */
+export const HEADER_HEIGHT = 68;
+
 export const PALETTE = [
   '#2563eb',
   '#0891b2',

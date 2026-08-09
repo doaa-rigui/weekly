@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import type { BlockDraft } from '@/lib/supabase';
 import { DAYS, FULL_DAYS, PALETTE, MINUTES_PER_DAY } from '@/lib/constants';
-import { formatTime } from './Planner';
-import { X, Trash2, Check } from 'lucide-react';
+import { formatTime, summarizeDays } from './Planner';
+import { X, Trash2, Check, Repeat } from 'lucide-react';
 
 const HOURS_24 = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = [0, 15, 30, 45];
@@ -27,8 +27,7 @@ export function EditPanel({
 }) {
   const [title, setTitle] = useState(draft.title);
   const [color, setColor] = useState(draft.color);
-  const [dayStart, setDayStart] = useState(draft.day_start);
-  const [dayEnd, setDayEnd] = useState(draft.day_end);
+  const [days, setDays] = useState<number[]>(draft.days);
 
   const startHM = toHourMin(draft.start_minute);
   const endHM = toHourMin(draft.end_minute);
@@ -39,25 +38,27 @@ export function EditPanel({
 
   const startMinute = startH * 60 + startM;
   const endMinute = endH * 60 + endM;
-  const spansDays = dayEnd > dayStart;
+  const repeats = days.length > 1;
 
-  const dayLabel =
-    dayStart === dayEnd
-      ? FULL_DAYS[dayStart]
-      : `${FULL_DAYS[dayStart]} – ${FULL_DAYS[dayEnd]}`;
+  const dayLabel = days.length === 1 ? FULL_DAYS[days[0]] : summarizeDays(days);
 
-  const endInvalid = endMinute <= startMinute && dayStart === dayEnd;
+  // Every row covers a single day, so the end must always follow the start.
+  const endInvalid = endMinute <= startMinute;
+  const noDays = days.length === 0;
+
+  const toggleDay = (day: number) =>
+    setDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
+    );
 
   const handleSave = () => {
-    let em = endH * 60 + endM;
-    if (em <= startMinute && dayStart === dayEnd) em = startMinute + 15;
+    if (noDays || endInvalid) return;
     onSave({
       title: title.trim() || 'Untitled',
       color,
-      day_start: dayStart,
-      day_end: dayEnd,
       start_minute: startMinute,
-      end_minute: em,
+      end_minute: endMinute,
+      days,
     });
   };
 
@@ -78,7 +79,7 @@ export function EditPanel({
               <h2 className="mt-0.5 truncate text-lg font-semibold">{title || 'Untitled'}</h2>
               <p className="mt-0.5 text-sm opacity-90">
                 {formatTime(startMinute)} – {formatTime(endMinute)}
-                {spansDays && ' · across multiple days'}
+                {repeats && ` · repeats on ${days.length} days`}
               </p>
             </div>
             <button
@@ -141,47 +142,34 @@ export function EditPanel({
             </div>
           </div>
 
-          {/* Day range */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                From day
+          {/* Repeat days */}
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                <Repeat className="h-3.5 w-3.5" />
+                Repeats on
               </label>
-              <select
-                value={dayStart}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setDayStart(v);
-                  if (v > dayEnd) setDayEnd(v);
-                }}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
-              >
-                {DAYS.map((d, i) => (
-                  <option key={d} value={i}>
-                    {FULL_DAYS[i]}
-                  </option>
-                ))}
-              </select>
+              <span className="text-xs font-medium text-slate-400">{summarizeDays(days)}</span>
             </div>
-            <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-                To day
-              </label>
-              <select
-                value={dayEnd}
-                onChange={(e) => {
-                  const v = Number(e.target.value);
-                  setDayEnd(v);
-                  if (v < dayStart) setDayStart(v);
-                }}
-                className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
-              >
-                {DAYS.map((d, i) => (
-                  <option key={d} value={i}>
-                    {FULL_DAYS[i]}
-                  </option>
-                ))}
-              </select>
+            <div className="grid grid-cols-7 gap-1.5">
+              {DAYS.map((d, i) => {
+                const active = days.includes(i);
+                return (
+                  <button
+                    key={d}
+                    onClick={() => toggleDay(i)}
+                    aria-pressed={active}
+                    title={FULL_DAYS[i]}
+                    className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                      active
+                        ? 'border-slate-900 bg-slate-900 text-white'
+                        : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                    }`}
+                  >
+                    {d}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -249,7 +237,12 @@ export function EditPanel({
 
           {endInvalid && (
             <p className="text-xs font-medium text-red-600">
-              End time must be after the start time on the same day.
+              End time must be after the start time.
+            </p>
+          )}
+          {noDays && (
+            <p className="text-xs font-medium text-red-600">
+              Pick at least one day for this block.
             </p>
           )}
         </div>
@@ -276,7 +269,7 @@ export function EditPanel({
             </button>
             <button
               onClick={handleSave}
-              disabled={endInvalid}
+              disabled={endInvalid || noDays}
               className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {isEditing ? 'Save changes' : 'Add block'}

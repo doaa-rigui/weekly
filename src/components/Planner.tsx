@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase, type PlannerBlock, type BlockDraft, type DayTag } from '@/lib/supabase';
 import {
   DAYS,
@@ -8,13 +8,17 @@ import {
   SLOT_MINUTES,
   SLOTS_PER_DAY,
   MINUTES_PER_DAY,
+  GUTTER_WIDTH,
+  HEADER_HEIGHT,
   PALETTE,
   DAY_TAG_CYCLE,
   DAY_TAG_STYLES,
   type DayTagValue,
 } from '@/lib/constants';
 import { EditPanel } from './EditPanel';
-import { Building2, CalendarDays, House, Palmtree, Plus, X } from 'lucide-react';
+import { Building2, CalendarDays, House, Palmtree, Plus, Repeat, X } from 'lucide-react';
+
+type DayTagMap = Partial<Record<number, DayTagValue>>;
 
 const DAY_TAG_ICONS = {
   remote: House,
@@ -22,8 +26,7 @@ const DAY_TAG_ICONS = {
   free: Palmtree,
 } as const;
 
-type DayTagMap = Partial<Record<number, DayTagValue>>;
-
+/** A drag in progress: an anchor cell plus wherever the pointer is now. */
 type Selection = {
   dayStart: number;
   dayEnd: number;
@@ -31,38 +34,72 @@ type Selection = {
   slotEnd: number;
 };
 
-function normalizeSelection(sel: Selection): BlockDraft {
+type Cell = { day: number; slot: number };
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(value, max));
+}
+
+function range(from: number, to: number): number[] {
+  return Array.from({ length: to - from + 1 }, (_, i) => from + i);
+}
+
+/**
+ * A drag reads as two independent axes, like Google Calendar:
+ * vertical picks the time range, horizontal picks the days it repeats on.
+ */
+function selectionToDraft(sel: Selection): BlockDraft {
   const slotStart = Math.min(sel.slotStart, sel.slotEnd);
   const slotEnd = Math.max(sel.slotStart, sel.slotEnd) + 1;
   return {
     title: 'New block',
     color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
-    day_start: Math.min(sel.dayStart, sel.dayEnd),
-    day_end: Math.max(sel.dayStart, sel.dayEnd),
     start_minute: slotStart * SLOT_MINUTES,
     end_minute: Math.min(slotEnd * SLOT_MINUTES, MINUTES_PER_DAY),
+    days: range(Math.min(sel.dayStart, sel.dayEnd), Math.max(sel.dayStart, sel.dayEnd)),
   };
 }
 
-function blocksOverlap(a: BlockDraft, b: PlannerBlock): boolean {
-  return (
-    a.day_start <= b.day_end &&
-    a.day_end >= b.day_start &&
-    a.start_minute < b.end_minute &&
-    a.end_minute > b.start_minute
-  );
+function seriesToDraft(rows: PlannerBlock[]): BlockDraft {
+  const [first] = rows;
+  return {
+    title: first.title,
+    color: first.color,
+    start_minute: first.start_minute,
+    end_minute: first.end_minute,
+    days: rows.map((r) => r.day_start).sort((a, b) => a - b),
+  };
 }
 
-type InsertPayload = Partial<BlockDraft> & {
-  hour_start?: number;
-  hour_end?: number;
-};
+/** The DB rows a draft expands to — one per day, all sharing a series id. */
+function draftToRows(draft: BlockDraft, seriesId: string) {
+  return draft.days.map((day) => ({
+    title: draft.title,
+    color: draft.color,
+    day_start: day,
+    day_end: day,
+    start_minute: draft.start_minute,
+    end_minute: draft.end_minute,
+    // Legacy columns, kept in sync so older readers still work.
+    hour_start: Math.floor(draft.start_minute / 60),
+    hour_end: Math.ceil(draft.end_minute / 60),
+    series_id: seriesId,
+  }));
+}
 
-function withLegacyHours(d: Partial<BlockDraft>): InsertPayload {
-  const out: InsertPayload = { ...d };
-  if (d.start_minute != null) out.hour_start = Math.floor(d.start_minute / 60);
-  if (d.end_minute != null) out.hour_end = Math.ceil(d.end_minute / 60);
-  return out;
+/** True if the draft would land on top of a block outside its own series. */
+function overlapsExisting(
+  draft: BlockDraft,
+  blocks: PlannerBlock[],
+  ignoreSeriesId?: string
+): boolean {
+  return blocks.some(
+    (b) =>
+      b.series_id !== ignoreSeriesId &&
+      draft.days.includes(b.day_start) &&
+      draft.start_minute < b.end_minute &&
+      draft.end_minute > b.start_minute
+  );
 }
 
 function toDayTagMap(rows: DayTag[]): DayTagMap {
@@ -71,7 +108,7 @@ function toDayTagMap(rows: DayTag[]): DayTagMap {
   return map;
 }
 
-/** Steps a day through remote -> office -> no tag. */
+/** Steps a day through remote -> office -> free -> no tag. */
 function nextDayTag(current: DayTagValue | undefined): DayTagValue | null {
   const idx = DAY_TAG_CYCLE.indexOf(current ?? null);
   return DAY_TAG_CYCLE[(idx + 1) % DAY_TAG_CYCLE.length];
@@ -81,6 +118,10 @@ function describeDbError(action: string, error: { code?: string; message: string
   // The table is missing entirely — the migrations were never applied.
   if (error.code === 'PGRST205' || error.message.includes('schema cache')) {
     return 'A table this app needs is missing. Run supabase/setup.sql in your Supabase SQL Editor, then reload.';
+  }
+  // A column is missing — the newest migration has not been applied.
+  if (error.code === 'PGRST204') {
+    return `${error.message}. Run the latest file in supabase/migrations, then reload.`;
   }
   // RLS is on but no policy grants anon access.
   if (error.code === '42501') {
@@ -98,6 +139,16 @@ export function formatTime(min: number): string {
   return m === 0 ? `${h12} ${ampm}` : `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+/** "Every day", "Mon – Fri" for a run, otherwise "Mon, Wed, Fri". */
+export function summarizeDays(days: number[]): string {
+  if (days.length === 0) return 'No days';
+  const sorted = [...days].sort((a, b) => a - b);
+  if (sorted.length === 7) return 'Every day';
+  const isRun = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
+  if (isRun && sorted.length > 2) return `${DAYS[sorted[0]]} – ${DAYS[sorted[sorted.length - 1]]}`;
+  return sorted.map((d) => DAYS[d]).join(', ');
+}
+
 function formatHour(h: number): string {
   return formatTime(h * 60);
 }
@@ -105,116 +156,213 @@ function formatHour(h: number): string {
 export function Planner() {
   const [blocks, setBlocks] = useState<PlannerBlock[]>([]);
   const [dayTags, setDayTags] = useState<DayTagMap>({});
-  const [loaded, setLoaded] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [draft, setDraft] = useState<BlockDraft | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
   const [overlapError, setOverlapError] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
-  const dragStartRef = useRef<{ day: number; slot: number } | null>(null);
 
-  const loadBlocks = useCallback(async () => {
-    const [blockRes, tagRes] = await Promise.all([
-      supabase.from('planner_blocks').select('*').order('created_at', { ascending: true }),
-      supabase.from('day_tags').select('*'),
-    ]);
-    if (blockRes.error) {
-      console.error('Failed to load blocks', blockRes.error);
-      setDbError(describeDbError('load', blockRes.error));
+  const gridRef = useRef<HTMLDivElement>(null);
+  const dragAnchorRef = useRef<Cell | null>(null);
+
+  const fetchBlocks = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('planner_blocks')
+      .select('*')
+      .order('created_at', { ascending: true });
+    if (error) {
+      console.error('Failed to load blocks', error);
+      setDbError(describeDbError('load', error));
+      return;
     }
-    if (tagRes.error) {
-      console.error('Failed to load day tags', tagRes.error);
-      setDbError(describeDbError('load', tagRes.error));
-    }
-    setBlocks(blockRes.data ?? []);
-    setDayTags(toDayTagMap(tagRes.data ?? []));
-    setLoaded(true);
+    setBlocks(data ?? []);
   }, []);
 
-  if (!loaded) {
-    loadBlocks();
-  }
+  useEffect(() => {
+    const loadAll = async () => {
+      const tagRes = await supabase.from('day_tags').select('*');
+      if (tagRes.error) {
+        console.error('Failed to load day tags', tagRes.error);
+        setDbError(describeDbError('load', tagRes.error));
+      }
+      setDayTags(toDayTagMap(tagRes.data ?? []));
+      await fetchBlocks();
+    };
+    loadAll();
+  }, [fetchBlocks]);
 
-  const handlePointerDown = (e: React.PointerEvent, day: number, slot: number) => {
-    if (editingId || draft) return;
-    if ((e.target as HTMLElement).closest('[data-block]')) return;
-    e.preventDefault();
-    dragStartRef.current = { day, slot };
-    setSelection({ dayStart: day, dayEnd: day, slotStart: slot, slotEnd: slot });
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  const flashOverlapError = () => {
+    setOverlapError(true);
+    setTimeout(() => setOverlapError(false), 2200);
   };
 
-  const handlePointerEnter = (day: number, slot: number) => {
-    if (!dragStartRef.current || !selection) return;
-    const start = dragStartRef.current;
+  // --- Dragging -------------------------------------------------------------
+  // Capture is taken on the grid container, not the cell under the pointer.
+  // Capturing on the cell would route every later pointer event back to that
+  // one cell, so the drag could never grow past where it started.
+
+  const cellFromPoint = (clientX: number, clientY: number): Cell | null => {
+    const el = gridRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const dayWidth = (rect.width - GUTTER_WIDTH) / DAYS.length;
+    return {
+      day: clamp(Math.floor((clientX - rect.left - GUTTER_WIDTH) / dayWidth), 0, DAYS.length - 1),
+      slot: clamp(
+        Math.floor((clientY - rect.top - HEADER_HEIGHT) / SLOT_HEIGHT),
+        0,
+        SLOTS_PER_DAY - 1
+      ),
+    };
+  };
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || draft || editingSeriesId) return;
+
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-block]') || target.closest('[data-header]')) return;
+
+    const rect = gridRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    // Ignore the header row and the time gutter.
+    if (e.clientY - rect.top < HEADER_HEIGHT || e.clientX - rect.left < GUTTER_WIDTH) return;
+
+    const cell = cellFromPoint(e.clientX, e.clientY);
+    if (!cell) return;
+
+    e.preventDefault();
+    dragAnchorRef.current = cell;
     setSelection({
-      dayStart: start.day,
-      dayEnd: day,
-      slotStart: start.slot,
-      slotEnd: slot,
+      dayStart: cell.day,
+      dayEnd: cell.day,
+      slotStart: cell.slot,
+      slotEnd: cell.slot,
+    });
+    gridRef.current?.setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    const anchor = dragAnchorRef.current;
+    if (!anchor) return;
+    const cell = cellFromPoint(e.clientX, e.clientY);
+    if (!cell) return;
+    setSelection({
+      dayStart: anchor.day,
+      dayEnd: cell.day,
+      slotStart: anchor.slot,
+      slotEnd: cell.slot,
     });
   };
 
-  const handlePointerUp = () => {
-    if (!selection || !dragStartRef.current) {
-      dragStartRef.current = null;
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (gridRef.current?.hasPointerCapture(e.pointerId)) {
+      gridRef.current.releasePointerCapture(e.pointerId);
+    }
+    if (!dragAnchorRef.current || !selection) {
+      dragAnchorRef.current = null;
       return;
     }
-    const newDraft = normalizeSelection(selection);
-    const overlaps = blocks.some((b) => blocksOverlap(newDraft, b));
-    if (overlaps) {
-      setOverlapError(true);
-      setTimeout(() => setOverlapError(false), 2200);
-    } else {
-      setDraft(newDraft);
+    dragAnchorRef.current = null;
+
+    const newDraft = selectionToDraft(selection);
+    setSelection(null);
+
+    if (overlapsExisting(newDraft, blocks)) {
+      flashOverlapError();
+      return;
     }
-    dragStartRef.current = null;
+    setDraft(newDraft);
+  };
+
+  const handlePointerCancel = () => {
+    dragAnchorRef.current = null;
     setSelection(null);
   };
 
+  // --- Persistence ----------------------------------------------------------
+
   const saveDraft = async (d: BlockDraft) => {
+    if (overlapsExisting(d, blocks)) {
+      flashOverlapError();
+      return;
+    }
     setDbError(null);
     const { data, error } = await supabase
       .from('planner_blocks')
-      .insert(withLegacyHours(d))
-      .select()
-      .single();
+      .insert(draftToRows(d, crypto.randomUUID()))
+      .select();
     if (error) {
       console.error('Failed to save block', error);
       setDbError(describeDbError('save', error));
       return;
     }
-    setBlocks((prev) => [...prev, data]);
+    setBlocks((prev) => [...prev, ...(data ?? [])]);
     setDraft(null);
   };
 
-  const updateBlock = async (id: string, patch: Partial<BlockDraft>) => {
-    setDbError(null);
-    const { data, error } = await supabase
-      .from('planner_blocks')
-      .update(withLegacyHours(patch))
-      .eq('id', id)
-      .select()
-      .single();
-    if (error) {
-      console.error('Failed to update block', error);
-      setDbError(describeDbError('update', error));
+  /**
+   * Reconciles a series against the edited draft: days that stay are updated,
+   * days that were added get new rows, days that were dropped are deleted.
+   */
+  const updateSeries = async (seriesId: string, d: BlockDraft) => {
+    if (overlapsExisting(d, blocks, seriesId)) {
+      flashOverlapError();
       return;
     }
-    setBlocks((prev) => prev.map((b) => (b.id === id ? data : b)));
-    setEditingId(null);
+    setDbError(null);
+
+    const current = blocks.filter((b) => b.series_id === seriesId);
+    const nextDays = new Set(d.days);
+    const currentDays = new Set(current.map((b) => b.day_start));
+
+    const staleIds = current.filter((b) => !nextDays.has(b.day_start)).map((b) => b.id);
+    const keptIds = current.filter((b) => nextDays.has(b.day_start)).map((b) => b.id);
+    const addedDays = d.days.filter((day) => !currentDays.has(day));
+
+    const fields = {
+      title: d.title,
+      color: d.color,
+      start_minute: d.start_minute,
+      end_minute: d.end_minute,
+      hour_start: Math.floor(d.start_minute / 60),
+      hour_end: Math.ceil(d.end_minute / 60),
+    };
+
+    const results = await Promise.all([
+      staleIds.length
+        ? supabase.from('planner_blocks').delete().in('id', staleIds)
+        : Promise.resolve({ error: null }),
+      keptIds.length
+        ? supabase.from('planner_blocks').update(fields).in('id', keptIds)
+        : Promise.resolve({ error: null }),
+      addedDays.length
+        ? supabase
+            .from('planner_blocks')
+            .insert(draftToRows({ ...d, days: addedDays }, seriesId))
+        : Promise.resolve({ error: null }),
+    ]);
+
+    const failure = results.find((r) => r.error);
+    if (failure?.error) {
+      console.error('Failed to update block', failure.error);
+      setDbError(describeDbError('update', failure.error));
+    }
+
+    // Three writes touched the series; re-read rather than patch it by hand.
+    await fetchBlocks();
+    setEditingSeriesId(null);
   };
 
-  const deleteBlock = async (id: string) => {
+  const deleteSeries = async (seriesId: string) => {
     setDbError(null);
-    const { error } = await supabase.from('planner_blocks').delete().eq('id', id);
+    const { error } = await supabase.from('planner_blocks').delete().eq('series_id', seriesId);
     if (error) {
       console.error('Failed to delete block', error);
       setDbError(describeDbError('delete', error));
       return;
     }
-    setBlocks((prev) => prev.filter((b) => b.id !== id));
-    setEditingId(null);
+    setBlocks((prev) => prev.filter((b) => b.series_id !== seriesId));
+    setEditingSeriesId(null);
   };
 
   const cycleDayTag = async (day: number) => {
@@ -241,8 +389,20 @@ export function Planner() {
     }
   };
 
-  const editingBlock = blocks.find((b) => b.id === editingId) ?? null;
-  const activeDraft = draft ?? (editingBlock ? { ...editingBlock } : null);
+  // --- Derived --------------------------------------------------------------
+
+  const editingSeries = useMemo(
+    () => (editingSeriesId ? blocks.filter((b) => b.series_id === editingSeriesId) : []),
+    [blocks, editingSeriesId]
+  );
+
+  const seriesSizes = useMemo(() => {
+    const sizes = new Map<string, number>();
+    for (const b of blocks) sizes.set(b.series_id, (sizes.get(b.series_id) ?? 0) + 1);
+    return sizes;
+  }, [blocks]);
+
+  const activeDraft = draft ?? (editingSeries.length ? seriesToDraft(editingSeries) : null);
 
   const selGrid = selection
     ? {
@@ -252,6 +412,8 @@ export function Planner() {
         rowEnd: Math.max(selection.slotStart, selection.slotEnd) + 3,
       }
     : null;
+
+  const selDraft = selection ? selectionToDraft(selection) : null;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -270,7 +432,7 @@ export function Planner() {
           </div>
           <div className="hidden items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 sm:inline-flex">
             <Plus className="h-3.5 w-3.5" />
-            Drag on the grid to add a block
+            Drag down to set the time, across to repeat it
           </div>
         </div>
       </header>
@@ -298,21 +460,32 @@ export function Planner() {
         )}
 
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          {/*
+            touch-pan-y, not touch-none: the grid is ~1150px tall, so touch
+            users must still be able to scroll the page vertically over it.
+          */}
           <div
-            className="grid select-none"
+            ref={gridRef}
+            className="grid touch-pan-y select-none"
             style={{
-              gridTemplateColumns: `56px repeat(7, 1fr)`,
-              gridTemplateRows: `68px repeat(${SLOTS_PER_DAY}, ${SLOT_HEIGHT}px)`,
+              gridTemplateColumns: `${GUTTER_WIDTH}px repeat(${DAYS.length}, 1fr)`,
+              gridTemplateRows: `${HEADER_HEIGHT}px repeat(${SLOTS_PER_DAY}, ${SLOT_HEIGHT}px)`,
             }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
           >
             {/* Header row */}
             <div
+              data-header
               className="border-b border-slate-200 bg-slate-50"
               style={{ gridColumn: '1', gridRow: '1' }}
             />
             {DAYS.map((day, idx) => (
               <div
                 key={day}
+                data-header
                 className="flex flex-col items-center justify-center gap-1 border-b border-l border-slate-200 bg-slate-50"
                 style={{ gridColumn: `${idx + 2}`, gridRow: '1' }}
               >
@@ -325,24 +498,27 @@ export function Planner() {
 
             {/* Hour label + slot cells per hour row */}
             {HOURS.map((hour) => (
-              <HourRow
-                key={hour}
-                hour={hour}
-                onPointerDown={handlePointerDown}
-                onPointerEnter={handlePointerEnter}
-                onPointerUp={handlePointerUp}
-              />
+              <HourRow key={hour} hour={hour} />
             ))}
 
             {/* Selection preview */}
-            {selGrid && (
+            {selGrid && selDraft && (
               <div
-                className="pointer-events-none z-20 m-0.5 rounded-md border-2 border-blue-500 bg-blue-400/20"
+                className="pointer-events-none z-20 m-0.5 overflow-hidden rounded-md border-2 border-blue-500 bg-blue-400/20 px-1 py-0.5"
                 style={{
                   gridColumn: `${selGrid.colStart} / ${selGrid.colEnd}`,
                   gridRow: `${selGrid.rowStart} / ${selGrid.rowEnd}`,
                 }}
-              />
+              >
+                <span className="text-[10px] font-semibold leading-tight text-blue-800">
+                  {formatTime(selDraft.start_minute)} – {formatTime(selDraft.end_minute)}
+                </span>
+                {selDraft.days.length > 1 && (
+                  <span className="ml-1 text-[10px] font-medium leading-tight text-blue-700">
+                    · {selDraft.days.length} days
+                  </span>
+                )}
+              </div>
             )}
 
             {/* Placed blocks */}
@@ -350,33 +526,37 @@ export function Planner() {
               const slotStart = Math.floor(b.start_minute / SLOT_MINUTES);
               const slotEnd = Math.ceil(b.end_minute / SLOT_MINUTES);
               const isCompact = b.end_minute - b.start_minute <= 60;
+              const repeatCount = seriesSizes.get(b.series_id) ?? 1;
               return (
                 <button
                   key={b.id}
                   data-block
-                  title={`${b.title} · ${formatTime(b.start_minute)} – ${formatTime(b.end_minute)}`}
-                  onClick={() => setEditingId(b.id)}
+                  title={`${b.title} · ${formatTime(b.start_minute)} – ${formatTime(b.end_minute)}${
+                    repeatCount > 1 ? ` · repeats on ${repeatCount} days` : ''
+                  }`}
+                  onClick={() => setEditingSeriesId(b.series_id)}
                   className={`group relative z-10 m-0.5 flex min-w-0 flex-col rounded-lg text-left text-white shadow-sm transition-all hover:shadow-md ${
                     isCompact ? 'overflow-visible p-0.5' : 'overflow-hidden p-2'
                   } ${
-                    editingId === b.id
+                    editingSeriesId === b.series_id
                       ? 'ring-2 ring-slate-900 ring-offset-1'
                       : 'hover:scale-[1.01]'
                   }`}
                   style={{
-                    gridColumn: `${b.day_start + 2} / ${b.day_end + 3}`,
+                    gridColumn: `${b.day_start + 2}`,
                     gridRow: `${slotStart + 2} / ${slotEnd + 2}`,
                     backgroundColor: b.color,
                   }}
                 >
                   <span
-                    className={`truncate font-semibold leading-tight ${
+                    className={`flex items-center gap-1 truncate font-semibold leading-tight ${
                       isCompact
                         ? 'absolute left-1 top-1 z-10 max-w-[calc(100%+160px)] rounded bg-inherit px-1 text-[10px]'
                         : 'text-xs sm:text-sm'
                     }`}
                   >
-                    {b.title}
+                    {repeatCount > 1 && <Repeat className="h-3 w-3 shrink-0 opacity-80" />}
+                    <span className="truncate">{b.title}</span>
                   </span>
                   {!isCompact && (
                     <span className="mt-0.5 text-[10px] leading-tight opacity-80">
@@ -390,15 +570,17 @@ export function Planner() {
         </div>
       </main>
 
-      {(draft || editingBlock) && activeDraft && (
+      {activeDraft && (
         <EditPanel
           draft={activeDraft}
-          isEditing={!!editingBlock}
-          onSave={(d) => (editingBlock ? updateBlock(editingBlock.id, d) : saveDraft(d))}
-          onDelete={() => editingBlock && deleteBlock(editingBlock.id)}
+          isEditing={editingSeries.length > 0}
+          onSave={(d) =>
+            editingSeriesId ? updateSeries(editingSeriesId, d) : saveDraft(d)
+          }
+          onDelete={() => editingSeriesId && deleteSeries(editingSeriesId)}
           onClose={() => {
             setDraft(null);
-            setEditingId(null);
+            setEditingSeriesId(null);
           }}
         />
       )}
@@ -414,11 +596,7 @@ function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }
   return (
     <button
       onClick={onClick}
-      title={
-        nextLabel
-          ? `Set to ${DAY_TAG_STYLES[nextLabel].label}`
-          : 'Remove tag'
-      }
+      title={nextLabel ? `Set to ${DAY_TAG_STYLES[nextLabel].label}` : 'Remove tag'}
       className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${
         style
           ? style.className
@@ -440,17 +618,7 @@ function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }
   );
 }
 
-function HourRow({
-  hour,
-  onPointerDown,
-  onPointerEnter,
-  onPointerUp,
-}: {
-  hour: number;
-  onPointerDown: (e: React.PointerEvent, day: number, slot: number) => void;
-  onPointerEnter: (day: number, slot: number) => void;
-  onPointerUp: () => void;
-}) {
+function HourRow({ hour }: { hour: number }) {
   const slotsInHour = HOUR_HEIGHT / SLOT_HEIGHT; // 4
   const baseSlot = hour * slotsInHour;
   return (
@@ -466,15 +634,7 @@ function HourRow({
       </div>
       {/* Slot cells */}
       {DAYS.map((_, dayIdx) => (
-        <SlotCells
-          key={dayIdx}
-          dayIdx={dayIdx}
-          baseSlot={baseSlot}
-          slotsInHour={slotsInHour}
-          onPointerDown={onPointerDown}
-          onPointerEnter={onPointerEnter}
-          onPointerUp={onPointerUp}
-        />
+        <SlotCells key={dayIdx} dayIdx={dayIdx} baseSlot={baseSlot} slotsInHour={slotsInHour} />
       ))}
     </>
   );
@@ -484,16 +644,10 @@ function SlotCells({
   dayIdx,
   baseSlot,
   slotsInHour,
-  onPointerDown,
-  onPointerEnter,
-  onPointerUp,
 }: {
   dayIdx: number;
   baseSlot: number;
   slotsInHour: number;
-  onPointerDown: (e: React.PointerEvent, day: number, slot: number) => void;
-  onPointerEnter: (day: number, slot: number) => void;
-  onPointerUp: () => void;
 }) {
   return (
     <>
@@ -507,9 +661,6 @@ function SlotCells({
               q < slotsInHour - 1 ? 'border-dashed' : ''
             } border-l border-slate-100 transition-colors hover:bg-slate-50/70`}
             style={{ gridColumn: `${dayIdx + 2}`, gridRow: `${slot + 2}` }}
-            onPointerDown={(e) => onPointerDown(e, dayIdx, slot)}
-            onPointerEnter={() => onPointerEnter(dayIdx, slot)}
-            onPointerUp={onPointerUp}
           >
             {!isHourBoundary && (
               <div className="absolute left-0 top-0 h-px w-1.5 bg-slate-200" />

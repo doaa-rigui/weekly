@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS planner_blocks (
   hour_end int CHECK (hour_end BETWEEN 1 AND 24),
   start_minute int NOT NULL DEFAULT 0,
   end_minute int NOT NULL DEFAULT 60,
+  series_id uuid NOT NULL DEFAULT gen_random_uuid(),
   created_at timestamptz DEFAULT now(),
   CONSTRAINT day_range_valid CHECK (day_start <= day_end),
   CONSTRAINT hour_range_valid CHECK (hour_start < hour_end)
@@ -28,7 +29,17 @@ CREATE TABLE IF NOT EXISTS planner_blocks (
 -- Columns, in case the table already existed from an older revision.
 ALTER TABLE planner_blocks
   ADD COLUMN IF NOT EXISTS start_minute int,
-  ADD COLUMN IF NOT EXISTS end_minute int;
+  ADD COLUMN IF NOT EXISTS end_minute int,
+  ADD COLUMN IF NOT EXISTS series_id uuid;
+
+-- Rows sharing a series_id are one repeat of the same block across days.
+UPDATE planner_blocks SET series_id = gen_random_uuid() WHERE series_id IS NULL;
+
+ALTER TABLE planner_blocks
+  ALTER COLUMN series_id SET DEFAULT gen_random_uuid(),
+  ALTER COLUMN series_id SET NOT NULL;
+
+CREATE INDEX IF NOT EXISTS planner_blocks_series_id_idx ON planner_blocks (series_id);
 
 UPDATE planner_blocks
 SET start_minute = hour_start * 60,
