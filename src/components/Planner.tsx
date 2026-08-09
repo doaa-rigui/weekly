@@ -26,7 +26,17 @@ import {
   type DayTagValue,
 } from '@/lib/constants';
 import { EditPanel } from './EditPanel';
-import { Building2, CalendarDays, House, Palmtree, Plus, Repeat, X } from 'lucide-react';
+import {
+  Building2,
+  CalendarDays,
+  House,
+  Loader2,
+  Palmtree,
+  Plus,
+  Repeat,
+  Trash2,
+  X,
+} from 'lucide-react';
 
 type DayTagMap = Partial<Record<number, DayTagValue>>;
 
@@ -148,7 +158,7 @@ function describeDbError(action: string, error: { code?: string; message: string
   if (error.code === '42501') {
     return 'The database rejected the request (row level security). Check the policies on planner_blocks.';
   }
-  return `Could not ${action} block: ${error.message}`;
+  return `Could not ${action}: ${error.message}`;
 }
 
 export function formatTime(min: number): string {
@@ -186,6 +196,8 @@ export function Planner() {
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
   const [overlapError, setOverlapError] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
+  const [confirmingClear, setConfirmingClear] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const dragAnchorRef = useRef<Cell | null>(null);
@@ -197,7 +209,7 @@ export function Planner() {
       .order('created_at', { ascending: true });
     if (error) {
       console.error('Failed to load blocks', error);
-      setDbError(describeDbError('load', error));
+      setDbError(describeDbError('load blocks', error));
       return;
     }
     setBlocks(data ?? []);
@@ -211,7 +223,7 @@ export function Planner() {
       .order('used_at', { ascending: false });
     if (error) {
       console.error('Failed to load recent colors', error);
-      setDbError(describeDbError('load', error));
+      setDbError(describeDbError('load recent colors', error));
       return;
     }
 
@@ -243,7 +255,7 @@ export function Planner() {
       const tagRes = await supabase.from('day_tags').select('*');
       if (tagRes.error) {
         console.error('Failed to load day tags', tagRes.error);
-        setDbError(describeDbError('load', tagRes.error));
+        setDbError(describeDbError('load day tags', tagRes.error));
       }
       setDayTags(toDayTagMap(tagRes.data ?? []));
       await Promise.all([fetchBlocks(), fetchRecentColors()]);
@@ -376,7 +388,7 @@ export function Planner() {
       .select();
     if (error) {
       console.error('Failed to save block', error);
-      setDbError(describeDbError('save', error));
+      setDbError(describeDbError('save block', error));
       return;
     }
     setBlocks((prev) => [...prev, ...(data ?? [])]);
@@ -430,7 +442,7 @@ export function Planner() {
     const failure = results.find((r) => r.error);
     if (failure?.error) {
       console.error('Failed to update block', failure.error);
-      setDbError(describeDbError('update', failure.error));
+      setDbError(describeDbError('update block', failure.error));
     }
 
     // Three writes touched the series; re-read rather than patch it by hand.
@@ -444,11 +456,29 @@ export function Planner() {
     const { error } = await supabase.from('planner_blocks').delete().eq('series_id', seriesId);
     if (error) {
       console.error('Failed to delete block', error);
-      setDbError(describeDbError('delete', error));
+      setDbError(describeDbError('delete block', error));
       return;
     }
     setBlocks((prev) => prev.filter((b) => b.series_id !== seriesId));
     setEditingSeriesId(null);
+  };
+
+  /** Deletes every block in the week. Day tags are left alone. */
+  const clearWeek = async () => {
+    setClearing(true);
+    setDbError(null);
+    // PostgREST wants a filter on DELETE; this one matches every row.
+    const { error } = await supabase.from('planner_blocks').delete().not('id', 'is', null);
+    setClearing(false);
+    if (error) {
+      console.error('Failed to clear the week', error);
+      setDbError(describeDbError('clear the week', error));
+      return;
+    }
+    setBlocks([]);
+    setDraft(null);
+    setEditingSeriesId(null);
+    setConfirmingClear(false);
   };
 
   const cycleDayTag = async (day: number) => {
@@ -470,7 +500,7 @@ export function Planner() {
 
     if (error) {
       console.error('Failed to save day tag', error);
-      setDbError(describeDbError('tag', error));
+      setDbError(describeDbError('save day tag', error));
       setDayTags(previous);
     }
   };
@@ -516,9 +546,19 @@ export function Planner() {
               <p className="text-xs text-slate-500">Your reusable week template</p>
             </div>
           </div>
-          <div className="hidden items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 sm:inline-flex">
-            <Plus className="h-3.5 w-3.5" />
-            Drag down to set the time, across to repeat it
+          <div className="flex items-center gap-2">
+            <div className="hidden items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 lg:inline-flex">
+              <Plus className="h-3.5 w-3.5" />
+              Drag down to set the time, across to repeat it
+            </div>
+            <ClearWeekButton
+              blockCount={blocks.length}
+              confirming={confirmingClear}
+              clearing={clearing}
+              onAsk={() => setConfirmingClear(true)}
+              onCancel={() => setConfirmingClear(false)}
+              onConfirm={clearWeek}
+            />
           </div>
         </div>
       </header>
@@ -674,6 +714,64 @@ export function Planner() {
           }}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * Wiping the week can't be undone, so the button asks first rather than
+ * firing on a single click.
+ */
+function ClearWeekButton({
+  blockCount,
+  confirming,
+  clearing,
+  onAsk,
+  onCancel,
+  onConfirm,
+}: {
+  blockCount: number;
+  confirming: boolean;
+  clearing: boolean;
+  onAsk: () => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  if (!confirming) {
+    return (
+      <button
+        onClick={onAsk}
+        disabled={blockCount === 0}
+        title={blockCount === 0 ? 'The week is already empty' : 'Delete every block'}
+        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-transparent disabled:hover:text-slate-600"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+        Clear
+      </button>
+    );
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 py-1 pl-3 pr-1 text-xs font-medium text-red-700">
+      <span className="hidden sm:inline">
+        Delete all {blockCount} {blockCount === 1 ? 'block' : 'blocks'}?
+      </span>
+      <span className="sm:hidden">Delete all?</span>
+      <button
+        onClick={onConfirm}
+        disabled={clearing}
+        className="inline-flex items-center gap-1 rounded-full bg-red-600 px-2.5 py-1 font-semibold text-white transition-colors hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {clearing && <Loader2 className="h-3 w-3 animate-spin" />}
+        {clearing ? 'Clearing…' : 'Clear'}
+      </button>
+      <button
+        onClick={onCancel}
+        disabled={clearing}
+        className="rounded-full px-2 py-1 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        Cancel
+      </button>
     </div>
   );
 }
