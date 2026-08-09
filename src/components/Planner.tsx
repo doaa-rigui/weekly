@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase, type PlannerBlock, type BlockDraft, type DayTag } from '@/lib/supabase';
+import {
+  supabase,
+  type PlannerBlock,
+  type BlockDraft,
+  type DayTag,
+  type RecentColor,
+} from '@/lib/supabase';
 import {
   DAYS,
   HOURS,
@@ -11,8 +17,12 @@ import {
   GUTTER_WIDTH,
   HEADER_HEIGHT,
   PALETTE,
+  TEXT_PALETTE,
+  DEFAULT_TEXT_COLOR,
+  RECENT_COLOR_LIMIT,
   DAY_TAG_CYCLE,
   DAY_TAG_STYLES,
+  type ColorKind,
   type DayTagValue,
 } from '@/lib/constants';
 import { EditPanel } from './EditPanel';
@@ -54,6 +64,7 @@ function selectionToDraft(sel: Selection): BlockDraft {
   return {
     title: 'New block',
     color: PALETTE[Math.floor(Math.random() * PALETTE.length)],
+    text_color: DEFAULT_TEXT_COLOR,
     start_minute: slotStart * SLOT_MINUTES,
     end_minute: Math.min(slotEnd * SLOT_MINUTES, MINUTES_PER_DAY),
     days: range(Math.min(sel.dayStart, sel.dayEnd), Math.max(sel.dayStart, sel.dayEnd)),
@@ -65,6 +76,7 @@ function seriesToDraft(rows: PlannerBlock[]): BlockDraft {
   return {
     title: first.title,
     color: first.color,
+    text_color: first.text_color ?? DEFAULT_TEXT_COLOR,
     start_minute: first.start_minute,
     end_minute: first.end_minute,
     days: rows.map((r) => r.day_start).sort((a, b) => a - b),
@@ -76,6 +88,7 @@ function draftToRows(draft: BlockDraft, seriesId: string) {
   return draft.days.map((day) => ({
     title: draft.title,
     color: draft.color,
+    text_color: draft.text_color,
     day_start: day,
     day_end: day,
     start_minute: draft.start_minute,
@@ -101,6 +114,14 @@ function overlapsExisting(
       draft.end_minute > b.start_minute
   );
 }
+
+const COLOR_KINDS: ColorKind[] = ['block', 'text'];
+
+/** The preset list a picker offers, so only genuinely custom colours get saved. */
+const PRESETS: Record<ColorKind, readonly string[]> = {
+  block: PALETTE,
+  text: TEXT_PALETTE,
+};
 
 function toDayTagMap(rows: DayTag[]): DayTagMap {
   const map: DayTagMap = {};
@@ -156,6 +177,10 @@ function formatHour(h: number): string {
 export function Planner() {
   const [blocks, setBlocks] = useState<PlannerBlock[]>([]);
   const [dayTags, setDayTags] = useState<DayTagMap>({});
+  const [recentColors, setRecentColors] = useState<Record<ColorKind, string[]>>({
+    block: [],
+    text: [],
+  });
   const [selection, setSelection] = useState<Selection | null>(null);
   const [draft, setDraft] = useState<BlockDraft | null>(null);
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
@@ -178,6 +203,41 @@ export function Planner() {
     setBlocks(data ?? []);
   }, []);
 
+  /** Reads the recent colours newest-first and trims anything past the limit. */
+  const fetchRecentColors = useCallback(async () => {
+    const { data, error } = await supabase
+      .from('recent_colors')
+      .select('*')
+      .order('used_at', { ascending: false });
+    if (error) {
+      console.error('Failed to load recent colors', error);
+      setDbError(describeDbError('load', error));
+      return;
+    }
+
+    const byKind: Record<ColorKind, string[]> = { block: [], text: [] };
+    for (const row of (data ?? []) as RecentColor[]) {
+      if (COLOR_KINDS.includes(row.kind)) byKind[row.kind].push(row.color);
+    }
+
+    setRecentColors({
+      block: byKind.block.slice(0, RECENT_COLOR_LIMIT),
+      text: byKind.text.slice(0, RECENT_COLOR_LIMIT),
+    });
+
+    // Drop the overflow so the table stays at five per picker.
+    const stale = COLOR_KINDS.map((kind) => ({
+      kind,
+      colors: byKind[kind].slice(RECENT_COLOR_LIMIT),
+    })).filter((entry) => entry.colors.length > 0);
+
+    await Promise.all(
+      stale.map((entry) =>
+        supabase.from('recent_colors').delete().eq('kind', entry.kind).in('color', entry.colors)
+      )
+    );
+  }, []);
+
   useEffect(() => {
     const loadAll = async () => {
       const tagRes = await supabase.from('day_tags').select('*');
@@ -186,10 +246,33 @@ export function Planner() {
         setDbError(describeDbError('load', tagRes.error));
       }
       setDayTags(toDayTagMap(tagRes.data ?? []));
-      await fetchBlocks();
+      await Promise.all([fetchBlocks(), fetchRecentColors()]);
     };
     loadAll();
-  }, [fetchBlocks]);
+  }, [fetchBlocks, fetchRecentColors]);
+
+  /** Records any colour the user typed in rather than picked from a preset. */
+  const rememberColors = async (d: BlockDraft) => {
+    const usedAt = new Date().toISOString();
+    const rows = [
+      { kind: 'block' as ColorKind, color: d.color },
+      { kind: 'text' as ColorKind, color: d.text_color },
+    ]
+      .filter((row) => !PRESETS[row.kind].includes(row.color))
+      .map((row) => ({ ...row, used_at: usedAt }));
+
+    if (rows.length === 0) return;
+
+    const { error } = await supabase
+      .from('recent_colors')
+      .upsert(rows, { onConflict: 'kind,color' });
+    if (error) {
+      // A colour failing to stick shouldn't disturb a block that saved fine.
+      console.error('Failed to save recent colors', error);
+      return;
+    }
+    await fetchRecentColors();
+  };
 
   const flashOverlapError = () => {
     setOverlapError(true);
@@ -298,6 +381,7 @@ export function Planner() {
     }
     setBlocks((prev) => [...prev, ...(data ?? [])]);
     setDraft(null);
+    await rememberColors(d);
   };
 
   /**
@@ -322,6 +406,7 @@ export function Planner() {
     const fields = {
       title: d.title,
       color: d.color,
+      text_color: d.text_color,
       start_minute: d.start_minute,
       end_minute: d.end_minute,
       hour_start: Math.floor(d.start_minute / 60),
@@ -351,6 +436,7 @@ export function Planner() {
     // Three writes touched the series; re-read rather than patch it by hand.
     await fetchBlocks();
     setEditingSeriesId(null);
+    await rememberColors(d);
   };
 
   const deleteSeries = async (seriesId: string) => {
@@ -535,7 +621,7 @@ export function Planner() {
                     repeatCount > 1 ? ` · repeats on ${repeatCount} days` : ''
                   }`}
                   onClick={() => setEditingSeriesId(b.series_id)}
-                  className={`group relative z-10 m-0.5 flex min-w-0 flex-col rounded-lg text-left text-white shadow-sm transition-all hover:shadow-md ${
+                  className={`group relative z-10 m-0.5 flex min-w-0 flex-col rounded-lg text-left shadow-sm transition-all hover:shadow-md ${
                     isCompact ? 'overflow-visible p-0.5' : 'overflow-hidden p-2'
                   } ${
                     editingSeriesId === b.series_id
@@ -546,6 +632,7 @@ export function Planner() {
                     gridColumn: `${b.day_start + 2}`,
                     gridRow: `${slotStart + 2} / ${slotEnd + 2}`,
                     backgroundColor: b.color,
+                    color: b.text_color ?? DEFAULT_TEXT_COLOR,
                   }}
                 >
                   <span
@@ -573,6 +660,7 @@ export function Planner() {
       {activeDraft && (
         <EditPanel
           draft={activeDraft}
+          recentColors={recentColors}
           isEditing={editingSeries.length > 0}
           onSave={(d) =>
             editingSeriesId ? updateSeries(editingSeriesId, d) : saveDraft(d)

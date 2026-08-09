@@ -43,6 +43,24 @@ export const GUTTER_WIDTH = 56;
 /** Height of the day-name header row, in px. */
 export const HEADER_HEIGHT = 68;
 
+/** Which picker a remembered custom colour came from. */
+export type ColorKind = 'block' | 'text';
+
+/** How many custom colours to remember per picker. */
+export const RECENT_COLOR_LIMIT = 5;
+
+export const DEFAULT_TEXT_COLOR = '#ffffff';
+
+/** Readable label colours: light ones for dark blocks, dark ones for pale blocks. */
+export const TEXT_PALETTE = [
+  '#ffffff',
+  '#f1f5f9',
+  '#cbd5e1',
+  '#64748b',
+  '#1e293b',
+  '#000000',
+];
+
 export const PALETTE = [
   '#2563eb',
   '#0891b2',

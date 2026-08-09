@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS planner_blocks (
   start_minute int NOT NULL DEFAULT 0,
   end_minute int NOT NULL DEFAULT 60,
   series_id uuid NOT NULL DEFAULT gen_random_uuid(),
+  text_color text NOT NULL DEFAULT '#ffffff',
   created_at timestamptz DEFAULT now(),
   CONSTRAINT day_range_valid CHECK (day_start <= day_end),
   CONSTRAINT hour_range_valid CHECK (hour_start < hour_end)
@@ -30,7 +31,8 @@ CREATE TABLE IF NOT EXISTS planner_blocks (
 ALTER TABLE planner_blocks
   ADD COLUMN IF NOT EXISTS start_minute int,
   ADD COLUMN IF NOT EXISTS end_minute int,
-  ADD COLUMN IF NOT EXISTS series_id uuid;
+  ADD COLUMN IF NOT EXISTS series_id uuid,
+  ADD COLUMN IF NOT EXISTS text_color text NOT NULL DEFAULT '#ffffff';
 
 -- Rows sharing a series_id are one repeat of the same block across days.
 UPDATE planner_blocks SET series_id = gen_random_uuid() WHERE series_id IS NULL;
@@ -100,6 +102,24 @@ ALTER TABLE day_tags DROP CONSTRAINT IF EXISTS day_tags_tag_valid;
 ALTER TABLE day_tags
   ADD CONSTRAINT day_tags_tag_valid CHECK (tag IN ('remote', 'office', 'free'));
 
+-- 3b. Recent colours --------------------------------------------------------
+-- The five most recently applied custom colours, kept per picker.
+
+CREATE TABLE IF NOT EXISTS recent_colors (
+  kind text NOT NULL,
+  color text NOT NULL,
+  used_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (kind, color)
+);
+
+ALTER TABLE recent_colors DROP CONSTRAINT IF EXISTS recent_colors_kind_check;
+ALTER TABLE recent_colors DROP CONSTRAINT IF EXISTS recent_colors_kind_valid;
+ALTER TABLE recent_colors
+  ADD CONSTRAINT recent_colors_kind_valid CHECK (kind IN ('block', 'text'));
+
+CREATE INDEX IF NOT EXISTS recent_colors_kind_used_at_idx
+  ON recent_colors (kind, used_at DESC);
+
 -- 4. Security ---------------------------------------------------------------
 -- Single-tenant, no sign-in screen: anon gets full CRUD on purpose.
 
@@ -137,4 +157,22 @@ CREATE POLICY "anon_update_day_tags" ON day_tags FOR UPDATE
 
 DROP POLICY IF EXISTS "anon_delete_day_tags" ON day_tags;
 CREATE POLICY "anon_delete_day_tags" ON day_tags FOR DELETE
+  TO anon, authenticated USING (true);
+
+ALTER TABLE recent_colors ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon_select_recent_colors" ON recent_colors;
+CREATE POLICY "anon_select_recent_colors" ON recent_colors FOR SELECT
+  TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "anon_insert_recent_colors" ON recent_colors;
+CREATE POLICY "anon_insert_recent_colors" ON recent_colors FOR INSERT
+  TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_update_recent_colors" ON recent_colors;
+CREATE POLICY "anon_update_recent_colors" ON recent_colors FOR UPDATE
+  TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_delete_recent_colors" ON recent_colors;
+CREATE POLICY "anon_delete_recent_colors" ON recent_colors FOR DELETE
   TO anon, authenticated USING (true);

@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import type { BlockDraft } from '@/lib/supabase';
-import { DAYS, FULL_DAYS, PALETTE, MINUTES_PER_DAY } from '@/lib/constants';
+import {
+  DAYS,
+  FULL_DAYS,
+  PALETTE,
+  TEXT_PALETTE,
+  MINUTES_PER_DAY,
+  type ColorKind,
+} from '@/lib/constants';
 import { formatTime, summarizeDays } from './Planner';
 import { X, Trash2, Check, Repeat } from 'lucide-react';
 
@@ -12,14 +19,92 @@ function toHourMin(min: number): { h: number; m: number } {
   return { h: Math.floor(c / 60), m: c % 60 };
 }
 
+/** Perceived brightness, so a swatch's tick mark stays visible on it. */
+function isLight(hex: string): boolean {
+  const raw = hex.replace('#', '');
+  const full = raw.length === 3 ? raw.replace(/./g, (c) => c + c) : raw;
+  if (full.length !== 6) return false;
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(full.slice(i, i + 2), 16));
+  if ([r, g, b].some(Number.isNaN)) return false;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 160;
+}
+
+function Swatch({
+  color,
+  selected,
+  onSelect,
+}: {
+  color: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  const light = isLight(color);
+  return (
+    <button
+      onClick={onSelect}
+      className={`relative flex h-9 items-center justify-center rounded-lg border transition-transform hover:scale-105 ${
+        selected ? 'ring-2 ring-slate-900 ring-offset-1' : ''
+      } ${light ? 'border-slate-200' : 'border-transparent'}`}
+      style={{ backgroundColor: color }}
+      aria-label={`Select color ${color}`}
+      aria-pressed={selected}
+    >
+      {selected && <Check className={`h-4 w-4 ${light ? 'text-slate-900' : 'text-white'}`} />}
+    </button>
+  );
+}
+
+function ColorField({
+  label,
+  value,
+  onChange,
+  palette,
+  recent,
+}: {
+  label: string;
+  value: string;
+  onChange: (color: string) => void;
+  palette: readonly string[];
+  recent: string[];
+}) {
+  // A recent colour that's since been added to the presets would show twice.
+  const extras = recent.filter((c) => !palette.includes(c));
+
+  return (
+    <div>
+      <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+        {label}
+      </label>
+      <div className="grid grid-cols-6 gap-2">
+        {[...palette, ...extras].map((c) => (
+          <Swatch key={c} color={c} selected={value === c} onSelect={() => onChange(c)} />
+        ))}
+      </div>
+
+      <div className="mt-3 flex items-center gap-3">
+        <input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-9 w-12 cursor-pointer rounded-lg border border-slate-200 bg-white p-1"
+          aria-label={`${label} custom picker`}
+        />
+        <span className="text-sm text-slate-500">Pick a custom color</span>
+      </div>
+    </div>
+  );
+}
+
 export function EditPanel({
   draft,
+  recentColors,
   isEditing,
   onSave,
   onDelete,
   onClose,
 }: {
   draft: BlockDraft;
+  recentColors: Record<ColorKind, string[]>;
   isEditing: boolean;
   onSave: (d: BlockDraft) => void;
   onDelete: () => void;
@@ -27,6 +112,7 @@ export function EditPanel({
 }) {
   const [title, setTitle] = useState(draft.title);
   const [color, setColor] = useState(draft.color);
+  const [textColor, setTextColor] = useState(draft.text_color);
   const [days, setDays] = useState<number[]>(draft.days);
 
   const startHM = toHourMin(draft.start_minute);
@@ -56,6 +142,7 @@ export function EditPanel({
     onSave({
       title: title.trim() || 'Untitled',
       color,
+      text_color: textColor,
       start_minute: startMinute,
       end_minute: endMinute,
       days,
@@ -71,8 +158,8 @@ export function EditPanel({
         className="w-full max-w-md overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Preview header */}
-        <div className="relative px-6 py-5 text-white" style={{ backgroundColor: color }}>
+        {/* Preview header — shows the block exactly as it will be drawn */}
+        <div className="relative px-6 py-5" style={{ backgroundColor: color, color: textColor }}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase tracking-wider opacity-80">{dayLabel}</p>
@@ -84,7 +171,8 @@ export function EditPanel({
             </div>
             <button
               onClick={onClose}
-              className="rounded-lg p-1.5 text-white/80 transition-colors hover:bg-white/15 hover:text-white"
+              className="rounded-lg p-1.5 opacity-70 transition-opacity hover:opacity-100"
+              aria-label="Close"
             >
               <X className="h-5 w-5" />
             </button>
@@ -108,39 +196,21 @@ export function EditPanel({
             />
           </div>
 
-          {/* Color */}
-          <div>
-            <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Color
-            </label>
-            <div className="grid grid-cols-6 gap-2">
-              {PALETTE.map((c) => (
-                <button
-                  key={c}
-                  onClick={() => setColor(c)}
-                  className={`relative flex h-9 items-center justify-center rounded-lg transition-transform hover:scale-105 ${
-                    color === c ? 'ring-2 ring-slate-900 ring-offset-1' : ''
-                  }`}
-                  style={{ backgroundColor: c }}
-                  aria-label={`Select color ${c}`}
-                >
-                  {color === c && <Check className="h-4 w-4 text-white" />}
-                </button>
-              ))}
-            </div>
-            <div className="mt-3 flex items-center gap-3">
-              <input
-                type="color"
-                value={color}
-                onChange={(e) => setColor(e.target.value)}
-                className="h-9 w-12 cursor-pointer rounded-lg border border-slate-200 bg-white p-1"
-                aria-label="Custom color picker"
-              />
-              <span className="text-sm text-slate-500">
-                Pick a custom color
-              </span>
-            </div>
-          </div>
+          <ColorField
+            label="Block color"
+            value={color}
+            onChange={setColor}
+            palette={PALETTE}
+            recent={recentColors.block}
+          />
+
+          <ColorField
+            label="Text color"
+            value={textColor}
+            onChange={setTextColor}
+            palette={TEXT_PALETTE}
+            recent={recentColors.text}
+          />
 
           {/* Repeat days */}
           <div>

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { DayTagValue } from './constants';
+import type { ColorKind, DayTagValue } from './constants';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -19,6 +19,7 @@ export type PlannerBlock = {
   start_minute: number;
   end_minute: number;
   series_id: string;
+  text_color: string;
   created_at: string;
 };
 
@@ -26,9 +27,16 @@ export type PlannerBlock = {
 export type BlockDraft = {
   title: string;
   color: string;
+  text_color: string;
   start_minute: number;
   end_minute: number;
   days: number[];
+};
+
+export type RecentColor = {
+  kind: ColorKind;
+  color: string;
+  used_at: string;
 };
 
 export type DayTag = {
