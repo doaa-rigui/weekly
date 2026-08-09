@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import type { DayTagValue } from './constants';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -17,3 +18,9 @@ export type PlannerBlock = {
 };
 
 export type BlockDraft = Omit<PlannerBlock, 'id' | 'created_at'>;
+
+export type DayTag = {
+  day: number;
+  tag: DayTagValue;
+  created_at: string;
+};

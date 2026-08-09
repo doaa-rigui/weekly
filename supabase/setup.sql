@@ -74,7 +74,16 @@ BEGIN
   END IF;
 END $$;
 
--- 3. Security ---------------------------------------------------------------
+-- 3. Day tags ---------------------------------------------------------------
+-- One optional 'remote' / 'office' tag per weekday index (0=Mon … 6=Sun).
+
+CREATE TABLE IF NOT EXISTS day_tags (
+  day int PRIMARY KEY CHECK (day BETWEEN 0 AND 6),
+  tag text NOT NULL CHECK (tag IN ('remote', 'office')),
+  created_at timestamptz DEFAULT now()
+);
+
+-- 4. Security ---------------------------------------------------------------
 -- Single-tenant, no sign-in screen: anon gets full CRUD on purpose.
 
 ALTER TABLE planner_blocks ENABLE ROW LEVEL SECURITY;
@@ -93,4 +102,22 @@ CREATE POLICY "anon_update_blocks" ON planner_blocks FOR UPDATE
 
 DROP POLICY IF EXISTS "anon_delete_blocks" ON planner_blocks;
 CREATE POLICY "anon_delete_blocks" ON planner_blocks FOR DELETE
+  TO anon, authenticated USING (true);
+
+ALTER TABLE day_tags ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "anon_select_day_tags" ON day_tags;
+CREATE POLICY "anon_select_day_tags" ON day_tags FOR SELECT
+  TO anon, authenticated USING (true);
+
+DROP POLICY IF EXISTS "anon_insert_day_tags" ON day_tags;
+CREATE POLICY "anon_insert_day_tags" ON day_tags FOR INSERT
+  TO anon, authenticated WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_update_day_tags" ON day_tags;
+CREATE POLICY "anon_update_day_tags" ON day_tags FOR UPDATE
+  TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "anon_delete_day_tags" ON day_tags;
+CREATE POLICY "anon_delete_day_tags" ON day_tags FOR DELETE
   TO anon, authenticated USING (true);

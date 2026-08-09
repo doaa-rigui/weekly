@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react';
-import { supabase, type PlannerBlock, type BlockDraft } from '@/lib/supabase';
+import { supabase, type PlannerBlock, type BlockDraft, type DayTag } from '@/lib/supabase';
 import {
   DAYS,
   HOURS,
@@ -9,9 +9,14 @@ import {
   SLOTS_PER_DAY,
   MINUTES_PER_DAY,
   PALETTE,
+  DAY_TAG_CYCLE,
+  DAY_TAG_STYLES,
+  type DayTagValue,
 } from '@/lib/constants';
 import { EditPanel } from './EditPanel';
-import { CalendarDays, Plus, X } from 'lucide-react';
+import { Building2, CalendarDays, House, Plus, X } from 'lucide-react';
+
+type DayTagMap = Partial<Record<number, DayTagValue>>;
 
 type Selection = {
   dayStart: number;
@@ -54,10 +59,22 @@ function withLegacyHours(d: Partial<BlockDraft>): InsertPayload {
   return out;
 }
 
+function toDayTagMap(rows: DayTag[]): DayTagMap {
+  const map: DayTagMap = {};
+  for (const row of rows) map[row.day] = row.tag;
+  return map;
+}
+
+/** Steps a day through remote -> office -> no tag. */
+function nextDayTag(current: DayTagValue | undefined): DayTagValue | null {
+  const idx = DAY_TAG_CYCLE.indexOf(current ?? null);
+  return DAY_TAG_CYCLE[(idx + 1) % DAY_TAG_CYCLE.length];
+}
+
 function describeDbError(action: string, error: { code?: string; message: string }): string {
   // The table is missing entirely — the migrations were never applied.
   if (error.code === 'PGRST205' || error.message.includes('schema cache')) {
-    return "The planner_blocks table doesn't exist yet. Run supabase/setup.sql in your Supabase SQL Editor, then reload.";
+    return 'A table this app needs is missing. Run supabase/setup.sql in your Supabase SQL Editor, then reload.';
   }
   // RLS is on but no policy grants anon access.
   if (error.code === '42501') {
@@ -81,6 +98,7 @@ function formatHour(h: number): string {
 
 export function Planner() {
   const [blocks, setBlocks] = useState<PlannerBlock[]>([]);
+  const [dayTags, setDayTags] = useState<DayTagMap>({});
   const [loaded, setLoaded] = useState(false);
   const [selection, setSelection] = useState<Selection | null>(null);
   const [draft, setDraft] = useState<BlockDraft | null>(null);
@@ -90,15 +108,20 @@ export function Planner() {
   const dragStartRef = useRef<{ day: number; slot: number } | null>(null);
 
   const loadBlocks = useCallback(async () => {
-    const { data, error } = await supabase
-      .from('planner_blocks')
-      .select('*')
-      .order('created_at', { ascending: true });
-    if (error) {
-      console.error('Failed to load blocks', error);
-      setDbError(describeDbError('load', error));
+    const [blockRes, tagRes] = await Promise.all([
+      supabase.from('planner_blocks').select('*').order('created_at', { ascending: true }),
+      supabase.from('day_tags').select('*'),
+    ]);
+    if (blockRes.error) {
+      console.error('Failed to load blocks', blockRes.error);
+      setDbError(describeDbError('load', blockRes.error));
     }
-    setBlocks(data ?? []);
+    if (tagRes.error) {
+      console.error('Failed to load day tags', tagRes.error);
+      setDbError(describeDbError('load', tagRes.error));
+    }
+    setBlocks(blockRes.data ?? []);
+    setDayTags(toDayTagMap(tagRes.data ?? []));
     setLoaded(true);
   }, []);
 
@@ -188,6 +211,30 @@ export function Planner() {
     setEditingId(null);
   };
 
+  const cycleDayTag = async (day: number) => {
+    const next = nextDayTag(dayTags[day]);
+    const previous = dayTags;
+
+    // Optimistic: the pill is a rapid toggle, so don't wait on the round trip.
+    setDayTags((prev) => {
+      const updated = { ...prev };
+      if (next) updated[day] = next;
+      else delete updated[day];
+      return updated;
+    });
+    setDbError(null);
+
+    const { error } = next
+      ? await supabase.from('day_tags').upsert({ day, tag: next }, { onConflict: 'day' })
+      : await supabase.from('day_tags').delete().eq('day', day);
+
+    if (error) {
+      console.error('Failed to save day tag', error);
+      setDbError(describeDbError('tag', error));
+      setDayTags(previous);
+    }
+  };
+
   const editingBlock = blocks.find((b) => b.id === editingId) ?? null;
   const activeDraft = draft ?? (editingBlock ? { ...editingBlock } : null);
 
@@ -249,7 +296,7 @@ export function Planner() {
             className="grid select-none"
             style={{
               gridTemplateColumns: `56px repeat(7, 1fr)`,
-              gridTemplateRows: `44px repeat(${SLOTS_PER_DAY}, ${SLOT_HEIGHT}px)`,
+              gridTemplateRows: `68px repeat(${SLOTS_PER_DAY}, ${SLOT_HEIGHT}px)`,
             }}
           >
             {/* Header row */}
@@ -260,12 +307,13 @@ export function Planner() {
             {DAYS.map((day, idx) => (
               <div
                 key={day}
-                className="flex items-center justify-center border-b border-l border-slate-200 bg-slate-50"
+                className="flex flex-col items-center justify-center gap-1 border-b border-l border-slate-200 bg-slate-50"
                 style={{ gridColumn: `${idx + 2}`, gridRow: '1' }}
               >
                 <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 sm:text-sm">
                   {day}
                 </span>
+                <DayTagPill tag={dayTags[idx]} onClick={() => cycleDayTag(idx)} />
               </div>
             ))}
 
@@ -349,6 +397,40 @@ export function Planner() {
         />
       )}
     </div>
+  );
+}
+
+function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }) {
+  const style = tag ? DAY_TAG_STYLES[tag] : null;
+  const Icon = tag === 'office' ? Building2 : House;
+  const nextLabel = nextDayTag(tag);
+
+  return (
+    <button
+      onClick={onClick}
+      title={
+        nextLabel
+          ? `Set to ${DAY_TAG_STYLES[nextLabel].label}`
+          : 'Remove tag'
+      }
+      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${
+        style
+          ? style.className
+          : 'border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600'
+      }`}
+    >
+      {tag ? (
+        <>
+          <Icon className="h-3 w-3" />
+          {style?.label}
+        </>
+      ) : (
+        <>
+          <Plus className="h-3 w-3" />
+          Tag
+        </>
+      )}
+    </button>
   );
 }
 
