@@ -665,7 +665,9 @@ export function Planner() {
           onSave={(d) =>
             editingSeriesId ? updateSeries(editingSeriesId, d) : saveDraft(d)
           }
-          onDelete={() => editingSeriesId && deleteSeries(editingSeriesId)}
+          onDelete={() => {
+            if (editingSeriesId) return deleteSeries(editingSeriesId);
+          }}
           onClose={() => {
             setDraft(null);
             setEditingSeriesId(null);

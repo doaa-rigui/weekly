@@ -9,7 +9,7 @@ import {
   type ColorKind,
 } from '@/lib/constants';
 import { formatTime, summarizeDays } from './Planner';
-import { X, Trash2, Check, Repeat } from 'lucide-react';
+import { X, Trash2, Check, Repeat, Loader2 } from 'lucide-react';
 
 const HOURS_24 = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = [0, 15, 30, 45];
@@ -106,14 +106,17 @@ export function EditPanel({
   draft: BlockDraft;
   recentColors: Record<ColorKind, string[]>;
   isEditing: boolean;
-  onSave: (d: BlockDraft) => void;
-  onDelete: () => void;
+  onSave: (d: BlockDraft) => void | Promise<void>;
+  onDelete: () => void | Promise<void>;
   onClose: () => void;
 }) {
   const [title, setTitle] = useState(draft.title);
   const [color, setColor] = useState(draft.color);
   const [textColor, setTextColor] = useState(draft.text_color);
   const [days, setDays] = useState<number[]>(draft.days);
+  // Which write is in flight, so the panel can't be double-submitted or
+  // closed out from under a request that is still running.
+  const [pending, setPending] = useState<'save' | 'delete' | null>(null);
 
   const startHM = toHourMin(draft.start_minute);
   const endHM = toHourMin(draft.end_minute);
@@ -137,22 +140,44 @@ export function EditPanel({
       prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort((a, b) => a - b)
     );
 
+  const busy = pending !== null;
+
+  const run = async (kind: 'save' | 'delete', action: () => void | Promise<void>) => {
+    if (busy) return;
+    setPending(kind);
+    try {
+      await action();
+    } finally {
+      // A successful save unmounts this panel; setting state on an unmounted
+      // component is a no-op, and on failure it re-enables the buttons.
+      setPending(null);
+    }
+  };
+
   const handleSave = () => {
-    if (noDays || endInvalid) return;
-    onSave({
-      title: title.trim() || 'Untitled',
-      color,
-      text_color: textColor,
-      start_minute: startMinute,
-      end_minute: endMinute,
-      days,
-    });
+    if (noDays || endInvalid || busy) return;
+    run('save', () =>
+      onSave({
+        title: title.trim() || 'Untitled',
+        color,
+        text_color: textColor,
+        start_minute: startMinute,
+        end_minute: endMinute,
+        days,
+      })
+    );
+  };
+
+  const handleDelete = () => run('delete', onDelete);
+
+  const handleClose = () => {
+    if (!busy) onClose();
   };
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:items-center sm:p-4"
-      onClick={onClose}
+      onClick={handleClose}
     >
       <div
         className="w-full max-w-md overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
@@ -170,8 +195,9 @@ export function EditPanel({
               </p>
             </div>
             <button
-              onClick={onClose}
-              className="rounded-lg p-1.5 opacity-70 transition-opacity hover:opacity-100"
+              onClick={handleClose}
+              disabled={busy}
+              className="rounded-lg p-1.5 opacity-70 transition-opacity hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-40"
               aria-label="Close"
             >
               <X className="h-5 w-5" />
@@ -322,27 +348,34 @@ export function EditPanel({
           <div>
             {isEditing && (
               <button
-                onClick={onDelete}
-                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50"
+                onClick={handleDelete}
+                disabled={busy}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
               >
-                <Trash2 className="h-4 w-4" />
-                Delete
+                {pending === 'delete' ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4" />
+                )}
+                {pending === 'delete' ? 'Deleting…' : 'Delete'}
               </button>
             )}
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100"
+              onClick={handleClose}
+              disabled={busy}
+              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
-              disabled={endInvalid || noDays}
-              className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={endInvalid || noDays || busy}
+              className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-900"
             >
-              {isEditing ? 'Save changes' : 'Add block'}
+              {pending === 'save' && <Loader2 className="h-4 w-4 animate-spin" />}
+              {pending === 'save' ? 'Saving…' : isEditing ? 'Save changes' : 'Add block'}
             </button>
           </div>
         </div>
