@@ -9,14 +9,15 @@ export const FULL_DAYS = [
   'Sunday',
 ] as const;
 
-export type DayTagValue = 'remote' | 'office';
+export type DayTagValue = 'remote' | 'office' | 'free';
 
 /** Clicking a day's tag steps through this list and wraps back to null (no tag). */
-export const DAY_TAG_CYCLE: (DayTagValue | null)[] = ['remote', 'office', null];
+export const DAY_TAG_CYCLE: (DayTagValue | null)[] = ['remote', 'office', 'free', null];
 
 export const DAY_TAG_STYLES: Record<DayTagValue, { label: string; className: string }> = {
   remote: { label: 'Remote', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
   office: { label: 'Office', className: 'border-indigo-200 bg-indigo-50 text-indigo-700' },
+  free: { label: 'Free', className: 'border-amber-200 bg-amber-50 text-amber-700' },
 };
 
 /** Total minutes in a day. */

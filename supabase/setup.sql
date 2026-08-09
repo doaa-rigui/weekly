@@ -75,13 +75,19 @@ BEGIN
 END $$;
 
 -- 3. Day tags ---------------------------------------------------------------
--- One optional 'remote' / 'office' tag per weekday index (0=Mon … 6=Sun).
+-- One optional 'remote' / 'office' / 'free' tag per weekday index (0=Mon … 6=Sun).
 
 CREATE TABLE IF NOT EXISTS day_tags (
   day int PRIMARY KEY CHECK (day BETWEEN 0 AND 6),
-  tag text NOT NULL CHECK (tag IN ('remote', 'office')),
+  tag text NOT NULL,
   created_at timestamptz DEFAULT now()
 );
+
+-- Stated separately so the accepted values can widen without recreating the table.
+ALTER TABLE day_tags DROP CONSTRAINT IF EXISTS day_tags_tag_check;
+ALTER TABLE day_tags DROP CONSTRAINT IF EXISTS day_tags_tag_valid;
+ALTER TABLE day_tags
+  ADD CONSTRAINT day_tags_tag_valid CHECK (tag IN ('remote', 'office', 'free'));
 
 -- 4. Security ---------------------------------------------------------------
 -- Single-tenant, no sign-in screen: anon gets full CRUD on purpose.

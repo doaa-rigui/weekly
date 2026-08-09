@@ -14,7 +14,13 @@ import {
   type DayTagValue,
 } from '@/lib/constants';
 import { EditPanel } from './EditPanel';
-import { Building2, CalendarDays, House, Plus, X } from 'lucide-react';
+import { Building2, CalendarDays, House, Palmtree, Plus, X } from 'lucide-react';
+
+const DAY_TAG_ICONS = {
+  remote: House,
+  office: Building2,
+  free: Palmtree,
+} as const;
 
 type DayTagMap = Partial<Record<number, DayTagValue>>;
 
@@ -402,7 +408,7 @@ export function Planner() {
 
 function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }) {
   const style = tag ? DAY_TAG_STYLES[tag] : null;
-  const Icon = tag === 'office' ? Building2 : House;
+  const Icon = tag ? DAY_TAG_ICONS[tag] : null;
   const nextLabel = nextDayTag(tag);
 
   return (
@@ -419,7 +425,7 @@ function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }
           : 'border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600'
       }`}
     >
-      {tag ? (
+      {tag && Icon ? (
         <>
           <Icon className="h-3 w-3" />
           {style?.label}
