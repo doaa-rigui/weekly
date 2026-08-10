@@ -110,19 +110,72 @@ function draftToRows(draft: BlockDraft, seriesId: string) {
   }));
 }
 
-/** True if the draft would land on top of a block outside its own series. */
-function overlapsExisting(
-  draft: BlockDraft,
-  blocks: PlannerBlock[],
-  ignoreSeriesId?: string
-): boolean {
-  return blocks.some(
-    (b) =>
-      b.series_id !== ignoreSeriesId &&
-      draft.days.includes(b.day_start) &&
-      draft.start_minute < b.end_minute &&
-      draft.end_minute > b.start_minute
+type BlockLayout = { col: number; cols: number };
+
+/**
+ * Overlapping blocks cascade rather than splitting the column evenly: each one
+ * is indented from the block beneath it and runs to the right edge, drawn on
+ * top. The block underneath keeps its title strip visible, and — unlike equal
+ * lanes — a single overlap doesn't halve the width of both blocks.
+ */
+const CASCADE_INDENT_PCT = 42;
+
+/** Cap on the total indent, so the topmost block of a big pile stays usable. */
+const CASCADE_MAX_TOTAL_PCT = 70;
+
+function cascadeIndent(cols: number): number {
+  if (cols <= 1) return 0;
+  return Math.min(CASCADE_INDENT_PCT, CASCADE_MAX_TOTAL_PCT / (cols - 1));
+}
+
+/**
+ * Splits one day's blocks into side-by-side lanes so overlapping ones stay
+ * visible, the way Google Calendar does it. `col` is the lane a block sits
+ * in and `cols` how many lanes its pile-up needs.
+ */
+function layoutDay(dayBlocks: PlannerBlock[]): Map<string, BlockLayout> {
+  const layout = new Map<string, BlockLayout>();
+  const sorted = [...dayBlocks].sort(
+    (a, b) =>
+      a.start_minute - b.start_minute ||
+      b.end_minute - a.end_minute ||
+      a.id.localeCompare(b.id)
   );
+
+  // A cluster is a run of blocks chained together by overlap. Lane count is
+  // shared across the whole cluster so the edges line up down the pile.
+  let cluster: string[] = [];
+  let laneEnds: number[] = [];
+  let clusterEnd = -1;
+
+  const closeCluster = () => {
+    for (const id of cluster) {
+      layout.set(id, { col: layout.get(id)!.col, cols: laneEnds.length });
+    }
+    cluster = [];
+    laneEnds = [];
+    clusterEnd = -1;
+  };
+
+  for (const block of sorted) {
+    if (cluster.length > 0 && block.start_minute >= clusterEnd) closeCluster();
+
+    // Reuse the first lane whose last block has already finished.
+    let lane = laneEnds.findIndex((end) => end <= block.start_minute);
+    if (lane === -1) {
+      laneEnds.push(block.end_minute);
+      lane = laneEnds.length - 1;
+    } else {
+      laneEnds[lane] = block.end_minute;
+    }
+
+    layout.set(block.id, { col: lane, cols: 1 });
+    cluster.push(block.id);
+    clusterEnd = Math.max(clusterEnd, block.end_minute);
+  }
+  if (cluster.length > 0) closeCluster();
+
+  return layout;
 }
 
 const COLOR_KINDS: ColorKind[] = ['block', 'text'];
@@ -194,13 +247,16 @@ export function Planner() {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [draft, setDraft] = useState<BlockDraft | null>(null);
   const [editingSeriesId, setEditingSeriesId] = useState<string | null>(null);
-  const [overlapError, setOverlapError] = useState(false);
   const [dbError, setDbError] = useState<string | null>(null);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [clearing, setClearing] = useState(false);
 
   const gridRef = useRef<HTMLDivElement>(null);
   const dragAnchorRef = useRef<Cell | null>(null);
+  // A press that begins on an existing block is ambiguous: it opens that
+  // block on a click, but draws a new overlapping one if the pointer moves.
+  const startedOnBlockRef = useRef(false);
+  const suppressBlockClickRef = useRef(false);
 
   const fetchBlocks = useCallback(async () => {
     const { data, error } = await supabase
@@ -286,11 +342,6 @@ export function Planner() {
     await fetchRecentColors();
   };
 
-  const flashOverlapError = () => {
-    setOverlapError(true);
-    setTimeout(() => setOverlapError(false), 2200);
-  };
-
   // --- Dragging -------------------------------------------------------------
   // Capture is taken on the grid container, not the cell under the pointer.
   // Capturing on the cell would route every later pointer event back to that
@@ -315,7 +366,7 @@ export function Planner() {
     if (e.button !== 0 || draft || editingSeriesId) return;
 
     const target = e.target as HTMLElement;
-    if (target.closest('[data-block]') || target.closest('[data-header]')) return;
+    if (target.closest('[data-header]')) return;
 
     const rect = gridRef.current?.getBoundingClientRect();
     if (!rect) return;
@@ -325,8 +376,19 @@ export function Planner() {
     const cell = cellFromPoint(e.clientX, e.clientY);
     if (!cell) return;
 
-    e.preventDefault();
     dragAnchorRef.current = cell;
+    startedOnBlockRef.current = target.closest('[data-block]') !== null;
+
+    if (startedOnBlockRef.current) {
+      // Hold off on everything: this may still be a plain click that opens the
+      // block. Capturing here would retarget the follow-up click to the grid,
+      // and preventDefault would stop it being generated at all — either way
+      // the block's own onClick would never run.
+      setSelection(null);
+      return;
+    }
+
+    e.preventDefault();
     setSelection({
       dayStart: cell.day,
       dayEnd: cell.day,
@@ -341,6 +403,15 @@ export function Planner() {
     if (!anchor) return;
     const cell = cellFromPoint(e.clientX, e.clientY);
     if (!cell) return;
+
+    // A press that began on a block only becomes a drag once it leaves the
+    // cell it started in. That's the point capture becomes safe to take, and
+    // it's needed from here on so the drag survives leaving the grid.
+    if (startedOnBlockRef.current && !selection) {
+      if (cell.day === anchor.day && cell.slot === anchor.slot) return;
+      gridRef.current?.setPointerCapture(e.pointerId);
+    }
+
     setSelection({
       dayStart: anchor.day,
       dayEnd: cell.day,
@@ -353,34 +424,35 @@ export function Planner() {
     if (gridRef.current?.hasPointerCapture(e.pointerId)) {
       gridRef.current.releasePointerCapture(e.pointerId);
     }
-    if (!dragAnchorRef.current || !selection) {
-      dragAnchorRef.current = null;
-      return;
-    }
+    const draggedFromBlock = startedOnBlockRef.current;
     dragAnchorRef.current = null;
+    startedOnBlockRef.current = false;
+
+    if (!selection) return;
 
     const newDraft = selectionToDraft(selection);
     setSelection(null);
 
-    if (overlapsExisting(newDraft, blocks)) {
-      flashOverlapError();
-      return;
+    if (draggedFromBlock) {
+      // The click event still follows this pointerup; swallow it so the
+      // block underneath doesn't open on top of the new draft.
+      suppressBlockClickRef.current = true;
+      setTimeout(() => {
+        suppressBlockClickRef.current = false;
+      }, 0);
     }
     setDraft(newDraft);
   };
 
   const handlePointerCancel = () => {
     dragAnchorRef.current = null;
+    startedOnBlockRef.current = false;
     setSelection(null);
   };
 
   // --- Persistence ----------------------------------------------------------
 
   const saveDraft = async (d: BlockDraft) => {
-    if (overlapsExisting(d, blocks)) {
-      flashOverlapError();
-      return;
-    }
     setDbError(null);
     const { data, error } = await supabase
       .from('planner_blocks')
@@ -401,10 +473,6 @@ export function Planner() {
    * days that were added get new rows, days that were dropped are deleted.
    */
   const updateSeries = async (seriesId: string, d: BlockDraft) => {
-    if (overlapsExisting(d, blocks, seriesId)) {
-      flashOverlapError();
-      return;
-    }
     setDbError(null);
 
     const current = blocks.filter((b) => b.series_id === seriesId);
@@ -512,6 +580,16 @@ export function Planner() {
     [blocks, editingSeriesId]
   );
 
+  const layouts = useMemo(() => {
+    const all = new Map<string, BlockLayout>();
+    for (let day = 0; day < DAYS.length; day++) {
+      const dayBlocks = blocks.filter((b) => b.day_start === day);
+      if (dayBlocks.length === 0) continue;
+      for (const [id, entry] of layoutDay(dayBlocks)) all.set(id, entry);
+    }
+    return all;
+  }, [blocks]);
+
   const seriesSizes = useMemo(() => {
     const sizes = new Map<string, number>();
     for (const b of blocks) sizes.set(b.series_id, (sizes.get(b.series_id) ?? 0) + 1);
@@ -564,13 +642,6 @@ export function Planner() {
       </header>
 
       <main className="mx-auto max-w-7xl px-2 py-6 sm:px-6">
-        {overlapError && (
-          <div className="mb-4 flex items-center gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
-            <X className="h-4 w-4" />
-            Blocks can't overlap. Pick an empty area.
-          </div>
-        )}
-
         {dbError && (
           <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             <X className="mt-0.5 h-4 w-4 shrink-0" />
@@ -630,7 +701,7 @@ export function Planner() {
             {/* Selection preview */}
             {selGrid && selDraft && (
               <div
-                className="pointer-events-none z-20 m-0.5 overflow-hidden rounded-md border-2 border-blue-500 bg-blue-400/20 px-1 py-0.5"
+                className="pointer-events-none z-40 m-0.5 overflow-hidden rounded-md border-2 border-blue-500 bg-blue-400/20 px-1 py-0.5"
                 style={{
                   gridColumn: `${selGrid.colStart} / ${selGrid.colEnd}`,
                   gridRow: `${selGrid.rowStart} / ${selGrid.rowEnd}`,
@@ -653,6 +724,11 @@ export function Planner() {
               const slotEnd = Math.ceil(b.end_minute / SLOT_MINUTES);
               const isCompact = b.end_minute - b.start_minute <= 60;
               const repeatCount = seriesSizes.get(b.series_id) ?? 1;
+              const { col, cols } = layouts.get(b.id) ?? { col: 0, cols: 1 };
+              const leftPct = col * cascadeIndent(cols);
+              // Letting a short block's label spill outside its box only works
+              // when nothing is sitting beside it.
+              const canOverflowLabel = isCompact && cols === 1;
               return (
                 <button
                   key={b.id}
@@ -660,17 +736,29 @@ export function Planner() {
                   title={`${b.title} · ${formatTime(b.start_minute)} – ${formatTime(b.end_minute)}${
                     repeatCount > 1 ? ` · repeats on ${repeatCount} days` : ''
                   }`}
-                  onClick={() => setEditingSeriesId(b.series_id)}
-                  className={`group relative z-10 m-0.5 flex min-w-0 flex-col rounded-lg text-left shadow-sm transition-all hover:shadow-md ${
-                    isCompact ? 'overflow-visible p-0.5' : 'overflow-hidden p-2'
-                  } ${
+                  onClick={() => {
+                    if (suppressBlockClickRef.current) return;
+                    setEditingSeriesId(b.series_id);
+                  }}
+                  className={`group relative my-0.5 flex min-w-0 flex-col rounded-lg text-left shadow-sm transition-all hover:shadow-md ${
+                    isCompact ? 'p-0.5' : 'p-2'
+                  } ${canOverflowLabel ? 'overflow-visible' : 'overflow-hidden'} ${
                     editingSeriesId === b.series_id
                       ? 'ring-2 ring-slate-900 ring-offset-1'
-                      : 'hover:scale-[1.01]'
+                      : `hover:scale-[1.01] ${
+                          // A rim against whatever it is sitting on top of.
+                          col > 0 ? 'ring-2 ring-white' : ''
+                        }`
                   }`}
                   style={{
                     gridColumn: `${b.day_start + 2}`,
                     gridRow: `${slotStart + 2} / ${slotEnd + 2}`,
+                    // Percentages resolve against the day column. Each block
+                    // runs to the right edge; the ones above are indented and
+                    // stacked over it, so every title strip stays readable.
+                    width: `calc(${100 - leftPct}% - 4px)`,
+                    marginLeft: `calc(${leftPct}% + 2px)`,
+                    zIndex: 10 + col,
                     backgroundColor: b.color,
                     color: b.text_color ?? DEFAULT_TEXT_COLOR,
                   }}
@@ -678,7 +766,11 @@ export function Planner() {
                   <span
                     className={`flex items-center gap-1 truncate font-semibold leading-tight ${
                       isCompact
-                        ? 'absolute left-1 top-1 z-10 max-w-[calc(100%+160px)] rounded bg-inherit px-1 text-[10px]'
+                        ? `absolute left-1 top-1 z-10 rounded bg-inherit px-1 text-[10px] ${
+                            canOverflowLabel
+                              ? 'max-w-[calc(100%+160px)]'
+                              : 'max-w-[calc(100%-8px)]'
+                          }`
                         : 'text-xs sm:text-sm'
                     }`}
                   >
