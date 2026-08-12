@@ -12,6 +12,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey);
  */
 export type PlannerBlock = {
   id: string;
+  user_id: string;
   title: string;
   color: string;
   day_start: number;
@@ -34,12 +35,14 @@ export type BlockDraft = {
 };
 
 export type RecentColor = {
+  user_id: string;
   kind: ColorKind;
   color: string;
   used_at: string;
 };
 
 export type DayTag = {
+  user_id: string;
   day: number;
   tag: DayTagValue;
   created_at: string;

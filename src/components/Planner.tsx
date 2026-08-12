@@ -25,12 +25,14 @@ import {
   type ColorKind,
   type DayTagValue,
 } from '@/lib/constants';
+import { useAuth } from '@/lib/auth';
 import { EditPanel } from './EditPanel';
 import {
   Building2,
   CalendarDays,
   House,
   Loader2,
+  LogOut,
   Palmtree,
   Plus,
   Repeat,
@@ -94,8 +96,9 @@ function seriesToDraft(rows: PlannerBlock[]): BlockDraft {
 }
 
 /** The DB rows a draft expands to — one per day, all sharing a series id. */
-function draftToRows(draft: BlockDraft, seriesId: string) {
+function draftToRows(draft: BlockDraft, seriesId: string, userId: string) {
   return draft.days.map((day) => ({
+    user_id: userId,
     title: draft.title,
     color: draft.color,
     text_color: draft.text_color,
@@ -238,6 +241,10 @@ function formatHour(h: number): string {
 }
 
 export function Planner() {
+  const { user, signOut } = useAuth();
+  // Planner only renders behind the auth gate, so this is always set.
+  const userId = user!.id;
+
   const [blocks, setBlocks] = useState<PlannerBlock[]>([]);
   const [dayTags, setDayTags] = useState<DayTagMap>({});
   const [recentColors, setRecentColors] = useState<Record<ColorKind, string[]>>({
@@ -301,10 +308,15 @@ export function Planner() {
 
     await Promise.all(
       stale.map((entry) =>
-        supabase.from('recent_colors').delete().eq('kind', entry.kind).in('color', entry.colors)
+        supabase
+          .from('recent_colors')
+          .delete()
+          .eq('user_id', userId)
+          .eq('kind', entry.kind)
+          .in('color', entry.colors)
       )
     );
-  }, []);
+  }, [userId]);
 
   useEffect(() => {
     const loadAll = async () => {
@@ -327,13 +339,13 @@ export function Planner() {
       { kind: 'text' as ColorKind, color: d.text_color },
     ]
       .filter((row) => !PRESETS[row.kind].includes(row.color))
-      .map((row) => ({ ...row, used_at: usedAt }));
+      .map((row) => ({ ...row, user_id: userId, used_at: usedAt }));
 
     if (rows.length === 0) return;
 
     const { error } = await supabase
       .from('recent_colors')
-      .upsert(rows, { onConflict: 'kind,color' });
+      .upsert(rows, { onConflict: 'user_id,kind,color' });
     if (error) {
       // A colour failing to stick shouldn't disturb a block that saved fine.
       console.error('Failed to save recent colors', error);
@@ -456,7 +468,7 @@ export function Planner() {
     setDbError(null);
     const { data, error } = await supabase
       .from('planner_blocks')
-      .insert(draftToRows(d, crypto.randomUUID()))
+      .insert(draftToRows(d, crypto.randomUUID(), userId))
       .select();
     if (error) {
       console.error('Failed to save block', error);
@@ -503,7 +515,7 @@ export function Planner() {
       addedDays.length
         ? supabase
             .from('planner_blocks')
-            .insert(draftToRows({ ...d, days: addedDays }, seriesId))
+            .insert(draftToRows({ ...d, days: addedDays }, seriesId, userId))
         : Promise.resolve({ error: null }),
     ]);
 
@@ -535,8 +547,7 @@ export function Planner() {
   const clearWeek = async () => {
     setClearing(true);
     setDbError(null);
-    // PostgREST wants a filter on DELETE; this one matches every row.
-    const { error } = await supabase.from('planner_blocks').delete().not('id', 'is', null);
+    const { error } = await supabase.from('planner_blocks').delete().eq('user_id', userId);
     setClearing(false);
     if (error) {
       console.error('Failed to clear the week', error);
@@ -563,8 +574,10 @@ export function Planner() {
     setDbError(null);
 
     const { error } = next
-      ? await supabase.from('day_tags').upsert({ day, tag: next }, { onConflict: 'day' })
-      : await supabase.from('day_tags').delete().eq('day', day);
+      ? await supabase
+          .from('day_tags')
+          .upsert({ user_id: userId, day, tag: next }, { onConflict: 'user_id,day' })
+      : await supabase.from('day_tags').delete().eq('user_id', userId).eq('day', day);
 
     if (error) {
       console.error('Failed to save day tag', error);
@@ -637,6 +650,17 @@ export function Planner() {
               onCancel={() => setConfirmingClear(false)}
               onConfirm={clearWeek}
             />
+            <span className="hidden max-w-[16ch] truncate text-xs text-slate-400 xl:inline">
+              {user?.email}
+            </span>
+            <button
+              onClick={signOut}
+              title={`Sign out${user?.email ? ` (${user.email})` : ''}`}
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+            >
+              <LogOut className="h-3.5 w-3.5" />
+              Sign out
+            </button>
           </div>
         </div>
       </header>
