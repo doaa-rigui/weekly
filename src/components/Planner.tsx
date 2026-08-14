@@ -22,6 +22,8 @@ import {
   RECENT_COLOR_LIMIT,
   DAY_TAG_CYCLE,
   DAY_TAG_STYLES,
+  dayIndexOf,
+  msUntilNextMidnight,
   type ColorKind,
   type DayTagValue,
 } from '@/lib/constants';
@@ -240,10 +242,36 @@ function formatHour(h: number): string {
   return formatTime(h * 60);
 }
 
+/**
+ * The column today sits in. A tab left open overnight would otherwise keep
+ * highlighting yesterday, so it re-arms itself for each midnight.
+ */
+function useTodayIndex(): number {
+  const [today, setToday] = useState(() => dayIndexOf(new Date()));
+
+  useEffect(() => {
+    let timer: number;
+
+    const schedule = () => {
+      const now = new Date();
+      setToday(dayIndexOf(now));
+      // A minute of slack, so a timer firing a touch early doesn't land back
+      // on the day that just ended and then wait a whole day to correct.
+      timer = window.setTimeout(schedule, msUntilNextMidnight(now) + 60_000);
+    };
+
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return today;
+}
+
 export function Planner() {
   const { user, signOut } = useAuth();
   // Planner only renders behind the auth gate, so this is always set.
   const userId = user!.id;
+  const todayIndex = useTodayIndex();
 
   const [blocks, setBlocks] = useState<PlannerBlock[]>([]);
   const [dayTags, setDayTags] = useState<DayTagMap>({});
@@ -703,23 +731,36 @@ export function Planner() {
               className="border-b border-slate-200 bg-slate-50"
               style={{ gridColumn: '1', gridRow: '1' }}
             />
-            {DAYS.map((day, idx) => (
-              <div
-                key={day}
-                data-header
-                className="flex flex-col items-center justify-center gap-1 border-b border-l border-slate-200 bg-slate-50"
-                style={{ gridColumn: `${idx + 2}`, gridRow: '1' }}
-              >
-                <span className="text-xs font-semibold uppercase tracking-wider text-slate-600 sm:text-sm">
-                  {day}
-                </span>
-                <DayTagPill tag={dayTags[idx]} onClick={() => cycleDayTag(idx)} />
-              </div>
-            ))}
+            {DAYS.map((day, idx) => {
+              const isToday = idx === todayIndex;
+              return (
+                <div
+                  key={day}
+                  data-header
+                  aria-current={isToday ? 'date' : undefined}
+                  className={`flex flex-col items-center justify-center gap-1 border-b border-l border-slate-200 ${
+                    isToday ? 'bg-blue-50' : 'bg-slate-50'
+                  }`}
+                  style={{ gridColumn: `${idx + 2}`, gridRow: '1' }}
+                >
+                  <span
+                    title={isToday ? 'Today' : undefined}
+                    className={`text-xs font-semibold uppercase tracking-wider sm:text-sm ${
+                      isToday
+                        ? 'rounded-full bg-blue-600 px-2 py-0.5 text-white'
+                        : 'text-slate-600'
+                    }`}
+                  >
+                    {day}
+                  </span>
+                  <DayTagPill tag={dayTags[idx]} onClick={() => cycleDayTag(idx)} />
+                </div>
+              );
+            })}
 
             {/* Hour label + slot cells per hour row */}
             {HOURS.map((hour) => (
-              <HourRow key={hour} hour={hour} />
+              <HourRow key={hour} hour={hour} todayIndex={todayIndex} />
             ))}
 
             {/* Selection preview */}
@@ -922,7 +963,7 @@ function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }
   );
 }
 
-function HourRow({ hour }: { hour: number }) {
+function HourRow({ hour, todayIndex }: { hour: number; todayIndex: number }) {
   const slotsInHour = HOUR_HEIGHT / SLOT_HEIGHT; // 4
   const baseSlot = hour * slotsInHour;
   return (
@@ -938,7 +979,13 @@ function HourRow({ hour }: { hour: number }) {
       </div>
       {/* Slot cells */}
       {DAYS.map((_, dayIdx) => (
-        <SlotCells key={dayIdx} dayIdx={dayIdx} baseSlot={baseSlot} slotsInHour={slotsInHour} />
+        <SlotCells
+          key={dayIdx}
+          dayIdx={dayIdx}
+          baseSlot={baseSlot}
+          slotsInHour={slotsInHour}
+          isToday={dayIdx === todayIndex}
+        />
       ))}
     </>
   );
@@ -948,10 +995,12 @@ function SlotCells({
   dayIdx,
   baseSlot,
   slotsInHour,
+  isToday,
 }: {
   dayIdx: number;
   baseSlot: number;
   slotsInHour: number;
+  isToday: boolean;
 }) {
   return (
     <>
@@ -963,7 +1012,9 @@ function SlotCells({
             key={slot}
             className={`relative ${isHourBoundary ? 'border-t' : ''} ${
               q < slotsInHour - 1 ? 'border-dashed' : ''
-            } border-l border-slate-100 transition-colors hover:bg-slate-50/70`}
+            } border-l border-slate-100 transition-colors ${
+              isToday ? 'bg-blue-50/50 hover:bg-blue-100/60' : 'hover:bg-slate-50/70'
+            }`}
             style={{ gridColumn: `${dayIdx + 2}`, gridRow: `${slot + 2}` }}
           >
             {!isHourBoundary && (

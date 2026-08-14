@@ -9,6 +9,21 @@ export const FULL_DAYS = [
   'Sunday',
 ] as const;
 
+/**
+ * Which column of `DAYS` a date falls in. `DAYS` is Monday-first, while
+ * `Date#getDay` counts from Sunday, so the two need shifting apart.
+ */
+export function dayIndexOf(date: Date): number {
+  return (date.getDay() + 6) % 7;
+}
+
+/** Milliseconds until the next local midnight, when the marker has to move on. */
+export function msUntilNextMidnight(now: Date): number {
+  const midnight = new Date(now);
+  midnight.setHours(24, 0, 0, 0);
+  return midnight.getTime() - now.getTime();
+}
+
 export type DayTagValue = 'remote' | 'office' | 'free';
 
 /** Clicking a day's tag steps through this list and wraps back to null (no tag). */
