@@ -76,17 +76,16 @@ export const TEXT_PALETTE = [
   '#000000',
 ];
 
+/**
+ * One row of six in the picker, so the edit panel stays short enough to fit on
+ * screen. Hues are spread wide apart to keep adjacent blocks distinguishable;
+ * anything else is reachable through the custom picker.
+ */
 export const PALETTE = [
   '#2563eb',
   '#0891b2',
   '#059669',
   '#d97706',
   '#dc2626',
-  '#db2777',
   '#7c3aed',
-  '#4f46e5',
-  '#0d9488',
-  '#65a30d',
-  '#ea580c',
-  '#9333ea',
 ];

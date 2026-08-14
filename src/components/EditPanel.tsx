@@ -42,7 +42,7 @@ function Swatch({
   return (
     <button
       onClick={onSelect}
-      className={`relative flex h-9 items-center justify-center rounded-lg border transition-transform hover:scale-105 ${
+      className={`relative flex h-8 items-center justify-center rounded-lg border transition-transform hover:scale-105 ${
         selected ? 'ring-2 ring-slate-900 ring-offset-1' : ''
       } ${light ? 'border-slate-200' : 'border-transparent'}`}
       style={{ backgroundColor: color }}
@@ -72,24 +72,27 @@ function ColorField({
 
   return (
     <div>
-      <label className="mb-2 block text-xs font-semibold uppercase tracking-wider text-slate-500">
-        {label}
-      </label>
+      {/* The custom picker rides on the label row rather than below the
+          swatches, which keeps the whole panel within one screen. */}
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          {label}
+        </span>
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900">
+          Custom
+          <input
+            type="color"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
+            aria-label={`${label} custom picker`}
+          />
+        </label>
+      </div>
       <div className="grid grid-cols-6 gap-2">
         {[...palette, ...extras].map((c) => (
           <Swatch key={c} color={c} selected={value === c} onSelect={() => onChange(c)} />
         ))}
-      </div>
-
-      <div className="mt-3 flex items-center gap-3">
-        <input
-          type="color"
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="h-9 w-12 cursor-pointer rounded-lg border border-slate-200 bg-white p-1"
-          aria-label={`${label} custom picker`}
-        />
-        <span className="text-sm text-slate-500">Pick a custom color</span>
       </div>
     </div>
   );
@@ -180,11 +183,14 @@ export function EditPanel({
       onClick={handleClose}
     >
       <div
-        className="w-full max-w-md overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Preview header — shows the block exactly as it will be drawn */}
-        <div className="relative px-6 py-5" style={{ backgroundColor: color, color: textColor }}>
+        <div
+          className="relative shrink-0 px-6 py-4"
+          style={{ backgroundColor: color, color: textColor }}
+        >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase tracking-wider opacity-80">{dayLabel}</p>
@@ -205,7 +211,8 @@ export function EditPanel({
           </div>
         </div>
 
-        <div className="space-y-5 px-6 py-5">
+        {/* Scrolls on its own so the preview header and the action bar stay put. */}
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
           {/* Title */}
           <div>
             <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -217,7 +224,7 @@ export function EditPanel({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Morning Workout"
               autoFocus
-              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
               onKeyDown={(e) => e.key === 'Enter' && handleSave()}
             />
           </div>
@@ -256,7 +263,7 @@ export function EditPanel({
                     onClick={() => toggleDay(i)}
                     aria-pressed={active}
                     title={FULL_DAYS[i]}
-                    className={`rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                    className={`rounded-lg border py-1.5 text-xs font-semibold transition-colors ${
                       active
                         ? 'border-slate-900 bg-slate-900 text-white'
                         : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
@@ -279,7 +286,7 @@ export function EditPanel({
                 <select
                   value={startH}
                   onChange={(e) => setStartH(Number(e.target.value))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                 >
                   {HOURS_24.map((h) => (
                     <option key={h} value={h}>
@@ -290,7 +297,7 @@ export function EditPanel({
                 <select
                   value={startM}
                   onChange={(e) => setStartM(Number(e.target.value))}
-                  className="w-20 rounded-lg border border-slate-200 px-2 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-20 rounded-lg border border-slate-200 px-2 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                 >
                   {MINUTES.map((m) => (
                     <option key={m} value={m}>
@@ -308,7 +315,7 @@ export function EditPanel({
                 <select
                   value={endH}
                   onChange={(e) => setEndH(Number(e.target.value))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                 >
                   {HOURS_24.map((h) => (
                     <option key={h} value={h}>
@@ -319,7 +326,7 @@ export function EditPanel({
                 <select
                   value={endM}
                   onChange={(e) => setEndM(Number(e.target.value))}
-                  className="w-20 rounded-lg border border-slate-200 px-2 py-2.5 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-20 rounded-lg border border-slate-200 px-2 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
                 >
                   {MINUTES.map((m) => (
                     <option key={m} value={m}>
@@ -344,7 +351,7 @@ export function EditPanel({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center justify-between border-t border-slate-100 px-6 py-4">
+        <div className="flex shrink-0 items-center justify-between border-t border-slate-100 px-6 py-3">
           <div>
             {isEditing && (
               <button
