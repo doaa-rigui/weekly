@@ -662,7 +662,7 @@ export function Planner() {
               <h1 className="text-lg font-semibold tracking-tight text-slate-900">
                 Weekly Planner
               </h1>
-              <p className="text-xs text-slate-500">Your reusable week template</p>
+              <p className="text-xs text-slate-500">Dodo & Marie's reusable week template</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
