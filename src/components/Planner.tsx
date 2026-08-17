@@ -268,6 +268,34 @@ function useTodayIndex(): number {
 }
 
 /**
+ * Minutes since local midnight, re-read on each minute boundary rather than on
+ * a 60s interval, so the marker steps in time with the clock instead of
+ * drifting up to a minute behind it.
+ */
+function useNowMinutes(): number {
+  const [minutes, setMinutes] = useState(() => {
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes();
+  });
+
+  useEffect(() => {
+    let timer: number;
+
+    const schedule = () => {
+      const now = new Date();
+      setMinutes(now.getHours() * 60 + now.getMinutes());
+      const msToNextMinute = 60_000 - (now.getSeconds() * 1000 + now.getMilliseconds());
+      timer = window.setTimeout(schedule, msToNextMinute);
+    };
+
+    schedule();
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  return minutes;
+}
+
+/**
  * The height of the app bar, measured rather than hardcoded: the week header
  * sticks directly beneath it, and the bar's height changes with the viewport
  * (the hint pill and email only appear at wider breakpoints).
@@ -293,6 +321,7 @@ export function Planner() {
   // Planner only renders behind the auth gate, so this is always set.
   const userId = user!.id;
   const todayIndex = useTodayIndex();
+  const nowMinutes = useNowMinutes();
 
   const [blocks, setBlocks] = useState<PlannerBlock[]>([]);
   const [dayTags, setDayTags] = useState<DayTagMap>({});
@@ -803,6 +832,9 @@ export function Planner() {
               />
             ))}
 
+            {/* Current time */}
+            <NowMarker minute={nowMinutes} dayIndex={todayIndex} />
+
             {/* Selection preview */}
             {selGrid && selDraft && (
               <div
@@ -1001,6 +1033,51 @@ function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }
         </>
       )}
     </button>
+  );
+}
+
+/**
+ * Google-Calendar-style "right now" line: a red rule across today's column with
+ * a dot on its left edge, plus the time itself in the gutter. It rides in the
+ * grid cell holding the current slot and is nudged down by however far into
+ * that quarter-hour the clock has run, so it lands on the exact minute.
+ */
+function NowMarker({ minute, dayIndex }: { minute: number; dayIndex: number }) {
+  const slot = Math.floor(minute / SLOT_MINUTES);
+  const offset = ((minute % SLOT_MINUTES) / SLOT_MINUTES) * SLOT_HEIGHT;
+
+  return (
+    <>
+      {/* Time readout, in the gutter beside the line */}
+      <div
+        aria-hidden
+        className="pointer-events-none relative"
+        style={{ gridColumn: '1', gridRow: `${slot + 2}`, zIndex: 22 }}
+      >
+        <span
+          className="absolute right-1 -translate-y-1/2 rounded bg-red-500 px-1 py-px text-[10px] font-semibold leading-tight text-white shadow-sm"
+          style={{ top: offset }}
+        >
+          {formatTime(minute)}
+        </span>
+      </div>
+
+      {/* The line itself, across today */}
+      <div
+        className="pointer-events-none relative"
+        style={{ gridColumn: `${dayIndex + 2}`, gridRow: `${slot + 2}`, zIndex: 22 }}
+      >
+        <div
+          className="absolute inset-x-0 flex -translate-y-1/2 items-center"
+          style={{ top: offset }}
+          role="separator"
+          aria-label={`Current time, ${formatTime(minute)}`}
+        >
+          <span className="-ml-1 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 ring-2 ring-white" />
+          <span className="h-0.5 flex-1 bg-red-500" />
+        </div>
+      </div>
+    </>
   );
 }
 
