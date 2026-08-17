@@ -267,6 +267,27 @@ function useTodayIndex(): number {
   return today;
 }
 
+/**
+ * The height of the app bar, measured rather than hardcoded: the week header
+ * sticks directly beneath it, and the bar's height changes with the viewport
+ * (the hint pill and email only appear at wider breakpoints).
+ */
+function useElementHeight<T extends HTMLElement>(ref: React.RefObject<T | null>): number {
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const measure = () => setHeight(el.offsetHeight);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [ref]);
+
+  return height;
+}
+
 export function Planner() {
   const { user, signOut } = useAuth();
   // Planner only renders behind the auth gate, so this is always set.
@@ -287,6 +308,8 @@ export function Planner() {
   const [clearing, setClearing] = useState(false);
 
   const gridRef = useRef<HTMLDivElement>(null);
+  const appBarRef = useRef<HTMLElement>(null);
+  const appBarHeight = useElementHeight(appBarRef);
   const dragAnchorRef = useRef<Cell | null>(null);
   // A press that begins on an existing block is ambiguous: it opens that
   // block on a click, but draws a new overlapping one if the pointer moves.
@@ -652,7 +675,10 @@ export function Planner() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md">
+      <header
+        ref={appBarRef}
+        className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md"
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white">
@@ -708,7 +734,13 @@ export function Planner() {
           </div>
         )}
 
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/*
+          No overflow-hidden here: it would turn this card into the scroll
+          container for the sticky header row below, which never scrolls, so
+          the header would never stick. The corner cells round themselves
+          instead.
+        */}
+        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           {/*
             touch-pan-y, not touch-none: the grid is ~1150px tall, so touch
             users must still be able to scroll the page vertically over it.
@@ -725,11 +757,14 @@ export function Planner() {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
           >
-            {/* Header row */}
+            {/*
+              Header row — sticks just under the app bar so the day names and
+              their tags stay readable while the hours scroll past underneath.
+            */}
             <div
               data-header
-              className="border-b border-slate-200 bg-slate-50"
-              style={{ gridColumn: '1', gridRow: '1' }}
+              className="sticky rounded-tl-2xl border-b border-slate-200 bg-slate-50"
+              style={{ gridColumn: '1', gridRow: '1', top: appBarHeight, zIndex: 25 }}
             />
             {DAYS.map((day, idx) => {
               const isToday = idx === todayIndex;
@@ -738,10 +773,10 @@ export function Planner() {
                   key={day}
                   data-header
                   aria-current={isToday ? 'date' : undefined}
-                  className={`flex flex-col items-center justify-center gap-1 border-b border-l border-slate-200 ${
-                    isToday ? 'bg-blue-50' : 'bg-slate-50'
-                  }`}
-                  style={{ gridColumn: `${idx + 2}`, gridRow: '1' }}
+                  className={`sticky flex flex-col items-center justify-center gap-1 border-b border-l border-slate-200 ${
+                    idx === DAYS.length - 1 ? 'rounded-tr-2xl' : ''
+                  } ${isToday ? 'bg-blue-50' : 'bg-slate-50'}`}
+                  style={{ gridColumn: `${idx + 2}`, gridRow: '1', top: appBarHeight, zIndex: 25 }}
                 >
                   <span
                     title={isToday ? 'Today' : undefined}
@@ -759,14 +794,20 @@ export function Planner() {
             })}
 
             {/* Hour label + slot cells per hour row */}
-            {HOURS.map((hour) => (
-              <HourRow key={hour} hour={hour} todayIndex={todayIndex} />
+            {HOURS.map((hour, idx) => (
+              <HourRow
+                key={hour}
+                hour={hour}
+                todayIndex={todayIndex}
+                isLastHour={idx === HOURS.length - 1}
+              />
             ))}
 
             {/* Selection preview */}
             {selGrid && selDraft && (
               <div
-                className="pointer-events-none z-40 m-0.5 overflow-hidden rounded-md border-2 border-blue-500 bg-blue-400/20 px-1 py-0.5"
+                // Above the blocks, but under the sticky header it may scroll past.
+                className="pointer-events-none z-20 m-0.5 overflow-hidden rounded-md border-2 border-blue-500 bg-blue-400/20 px-1 py-0.5"
                 style={{
                   gridColumn: `${selGrid.colStart} / ${selGrid.colEnd}`,
                   gridRow: `${selGrid.rowStart} / ${selGrid.rowEnd}`,
@@ -963,14 +1004,24 @@ function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }
   );
 }
 
-function HourRow({ hour, todayIndex }: { hour: number; todayIndex: number }) {
+function HourRow({
+  hour,
+  todayIndex,
+  isLastHour,
+}: {
+  hour: number;
+  todayIndex: number;
+  isLastHour: boolean;
+}) {
   const slotsInHour = HOUR_HEIGHT / SLOT_HEIGHT; // 4
   const baseSlot = hour * slotsInHour;
   return (
     <>
       {/* Time label spans the whole hour */}
       <div
-        className="relative border-b border-slate-100 bg-slate-50/40"
+        className={`relative border-b border-slate-100 bg-slate-50/40 ${
+          isLastHour ? 'rounded-bl-2xl' : ''
+        }`}
         style={{ gridColumn: '1', gridRow: `${baseSlot + 2} / ${baseSlot + 2 + slotsInHour}` }}
       >
         <span className="absolute -top-2.5 right-2 text-[10px] font-medium text-slate-400">
@@ -985,6 +1036,7 @@ function HourRow({ hour, todayIndex }: { hour: number; todayIndex: number }) {
           baseSlot={baseSlot}
           slotsInHour={slotsInHour}
           isToday={dayIdx === todayIndex}
+          roundBottomRight={isLastHour && dayIdx === DAYS.length - 1}
         />
       ))}
     </>
@@ -996,11 +1048,13 @@ function SlotCells({
   baseSlot,
   slotsInHour,
   isToday,
+  roundBottomRight,
 }: {
   dayIdx: number;
   baseSlot: number;
   slotsInHour: number;
   isToday: boolean;
+  roundBottomRight: boolean;
 }) {
   return (
     <>
@@ -1013,8 +1067,8 @@ function SlotCells({
             className={`relative ${isHourBoundary ? 'border-t' : ''} ${
               q < slotsInHour - 1 ? 'border-dashed' : ''
             } border-l border-slate-100 transition-colors ${
-              isToday ? 'bg-blue-50/50 hover:bg-blue-100/60' : 'hover:bg-slate-50/70'
-            }`}
+              roundBottomRight && q === slotsInHour - 1 ? 'rounded-br-2xl' : ''
+            } ${isToday ? 'bg-blue-50/50 hover:bg-blue-100/60' : 'hover:bg-slate-50/70'}`}
             style={{ gridColumn: `${dayIdx + 2}`, gridRow: `${slot + 2}` }}
           >
             {!isHourBoundary && (
