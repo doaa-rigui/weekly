@@ -13,11 +13,27 @@
   account instead of leaving it ownerless.
 */
 
--- 1. Blocks -----------------------------------------------------------------
+-- 1. Planners ---------------------------------------------------------------
+-- One account can keep several planners (chores, study, …). Blocks and day
+-- tags belong to a planner; recent colours stay per account.
+
+CREATE TABLE IF NOT EXISTS planners (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  name text NOT NULL,
+  created_at timestamptz DEFAULT now()
+);
+
+-- The switcher lists one account's planners oldest-first.
+CREATE INDEX IF NOT EXISTS planners_user_id_created_at_idx
+  ON planners (user_id, created_at);
+
+-- 2. Blocks -----------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS planner_blocks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  planner_id uuid NOT NULL REFERENCES planners (id) ON DELETE CASCADE,
   title text NOT NULL,
   color text NOT NULL DEFAULT '#2563eb',
   day_start int NOT NULL CHECK (day_start BETWEEN 0 AND 6),
@@ -35,17 +51,19 @@ CREATE TABLE IF NOT EXISTS planner_blocks (
 
 CREATE INDEX IF NOT EXISTS planner_blocks_series_id_idx ON planner_blocks (series_id);
 CREATE INDEX IF NOT EXISTS planner_blocks_user_id_idx ON planner_blocks (user_id);
+CREATE INDEX IF NOT EXISTS planner_blocks_planner_id_idx ON planner_blocks (planner_id);
 
--- 2. Day tags ---------------------------------------------------------------
+-- 3. Day tags ---------------------------------------------------------------
 -- One optional 'remote' / 'office' / 'free' tag per weekday index (0=Mon … 6=Sun),
--- per person.
+-- per planner: a study week and a chores week each tag their own days.
 
 CREATE TABLE IF NOT EXISTS day_tags (
   user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  planner_id uuid NOT NULL REFERENCES planners (id) ON DELETE CASCADE,
   day int NOT NULL CHECK (day BETWEEN 0 AND 6),
   tag text NOT NULL,
   created_at timestamptz DEFAULT now(),
-  PRIMARY KEY (user_id, day)
+  PRIMARY KEY (planner_id, day)
 );
 
 -- Stated separately so the accepted values can widen without recreating the table.
@@ -54,7 +72,7 @@ ALTER TABLE day_tags DROP CONSTRAINT IF EXISTS day_tags_tag_valid;
 ALTER TABLE day_tags
   ADD CONSTRAINT day_tags_tag_valid CHECK (tag IN ('remote', 'office', 'free'));
 
--- 3. Recent colours ---------------------------------------------------------
+-- 4. Recent colours ---------------------------------------------------------
 -- The five most recently applied custom colours, kept per picker, per person.
 
 CREATE TABLE IF NOT EXISTS recent_colors (
@@ -73,12 +91,29 @@ ALTER TABLE recent_colors
 CREATE INDEX IF NOT EXISTS recent_colors_kind_used_at_idx
   ON recent_colors (user_id, kind, used_at DESC);
 
--- 4. Security ---------------------------------------------------------------
+-- 5. Security ---------------------------------------------------------------
 -- Signed in, and only your own rows. The anon role gets nothing.
 
+ALTER TABLE planners       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE planner_blocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE day_tags       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recent_colors  ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "own_planners_select" ON planners;
+CREATE POLICY "own_planners_select" ON planners FOR SELECT
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_planners_insert" ON planners;
+CREATE POLICY "own_planners_insert" ON planners FOR INSERT
+  TO authenticated WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_planners_update" ON planners;
+CREATE POLICY "own_planners_update" ON planners FOR UPDATE
+  TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_planners_delete" ON planners;
+CREATE POLICY "own_planners_delete" ON planners FOR DELETE
+  TO authenticated USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "own_blocks_select" ON planner_blocks;
 CREATE POLICY "own_blocks_select" ON planner_blocks FOR SELECT

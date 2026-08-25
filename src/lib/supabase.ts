@@ -7,12 +7,24 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 /**
+ * One named week. An account can hold several — a chores planner, a study
+ * planner — and every block and day tag belongs to exactly one of them.
+ */
+export type PlannerRecord = {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+};
+
+/**
  * One row = one day. A block repeated across several days is several rows
  * sharing a `series_id`; `day_start` and `day_end` are always equal.
  */
 export type PlannerBlock = {
   id: string;
   user_id: string;
+  planner_id: string;
   title: string;
   color: string;
   day_start: number;
@@ -43,6 +55,7 @@ export type RecentColor = {
 
 export type DayTag = {
   user_id: string;
+  planner_id: string;
   day: number;
   tag: DayTagValue;
   created_at: string;

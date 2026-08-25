@@ -28,7 +28,10 @@ import {
   type DayTagValue,
 } from '@/lib/constants';
 import { useAuth } from '@/lib/auth';
+import { describeDbError } from '@/lib/errors';
+import type { PlannerStore } from '@/lib/planners';
 import { EditPanel } from './EditPanel';
+import { PlannerSwitcher } from './PlannerSwitcher';
 import {
   Building2,
   CalendarDays,
@@ -98,9 +101,15 @@ function seriesToDraft(rows: PlannerBlock[]): BlockDraft {
 }
 
 /** The DB rows a draft expands to — one per day, all sharing a series id. */
-function draftToRows(draft: BlockDraft, seriesId: string, userId: string) {
+function draftToRows(
+  draft: BlockDraft,
+  seriesId: string,
+  userId: string,
+  plannerId: string
+) {
   return draft.days.map((day) => ({
     user_id: userId,
+    planner_id: plannerId,
     title: draft.title,
     color: draft.color,
     text_color: draft.text_color,
@@ -203,22 +212,6 @@ function nextDayTag(current: DayTagValue | undefined): DayTagValue | null {
   return DAY_TAG_CYCLE[(idx + 1) % DAY_TAG_CYCLE.length];
 }
 
-function describeDbError(action: string, error: { code?: string; message: string }): string {
-  // The table is missing entirely — the migrations were never applied.
-  if (error.code === 'PGRST205' || error.message.includes('schema cache')) {
-    return 'A table this app needs is missing. Run supabase/setup.sql in your Supabase SQL Editor, then reload.';
-  }
-  // A column is missing — the newest migration has not been applied.
-  if (error.code === 'PGRST204') {
-    return `${error.message}. Run the latest file in supabase/migrations, then reload.`;
-  }
-  // RLS is on but no policy grants anon access.
-  if (error.code === '42501') {
-    return 'The database rejected the request (row level security). Check the policies on planner_blocks.';
-  }
-  return `Could not ${action}: ${error.message}`;
-}
-
 export function formatTime(min: number): string {
   const clamped = ((min % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
   const h24 = Math.floor(clamped / 60);
@@ -316,7 +309,17 @@ function useElementHeight<T extends HTMLElement>(ref: React.RefObject<T | null>)
   return height;
 }
 
-export function Planner() {
+/**
+ * One planner's week. Mounted keyed on `plannerId`, so switching planners
+ * throws this state away and reloads rather than merging two weeks.
+ */
+export function Planner({
+  plannerId,
+  plannerStore,
+}: {
+  plannerId: string;
+  plannerStore: PlannerStore;
+}) {
   const { user, signOut } = useAuth();
   // Planner only renders behind the auth gate, so this is always set.
   const userId = user!.id;
@@ -349,6 +352,7 @@ export function Planner() {
     const { data, error } = await supabase
       .from('planner_blocks')
       .select('*')
+      .eq('planner_id', plannerId)
       .order('created_at', { ascending: true });
     if (error) {
       console.error('Failed to load blocks', error);
@@ -356,7 +360,7 @@ export function Planner() {
       return;
     }
     setBlocks(data ?? []);
-  }, []);
+  }, [plannerId]);
 
   /** Reads the recent colours newest-first and trims anything past the limit. */
   const fetchRecentColors = useCallback(async () => {
@@ -400,7 +404,7 @@ export function Planner() {
 
   useEffect(() => {
     const loadAll = async () => {
-      const tagRes = await supabase.from('day_tags').select('*');
+      const tagRes = await supabase.from('day_tags').select('*').eq('planner_id', plannerId);
       if (tagRes.error) {
         console.error('Failed to load day tags', tagRes.error);
         setDbError(describeDbError('load day tags', tagRes.error));
@@ -409,7 +413,7 @@ export function Planner() {
       await Promise.all([fetchBlocks(), fetchRecentColors()]);
     };
     loadAll();
-  }, [fetchBlocks, fetchRecentColors]);
+  }, [fetchBlocks, fetchRecentColors, plannerId]);
 
   /** Records any colour the user typed in rather than picked from a preset. */
   const rememberColors = async (d: BlockDraft) => {
@@ -548,7 +552,7 @@ export function Planner() {
     setDbError(null);
     const { data, error } = await supabase
       .from('planner_blocks')
-      .insert(draftToRows(d, crypto.randomUUID(), userId))
+      .insert(draftToRows(d, crypto.randomUUID(), userId, plannerId))
       .select();
     if (error) {
       console.error('Failed to save block', error);
@@ -595,7 +599,7 @@ export function Planner() {
       addedDays.length
         ? supabase
             .from('planner_blocks')
-            .insert(draftToRows({ ...d, days: addedDays }, seriesId, userId))
+            .insert(draftToRows({ ...d, days: addedDays }, seriesId, userId, plannerId))
         : Promise.resolve({ error: null }),
     ]);
 
@@ -623,11 +627,17 @@ export function Planner() {
     setEditingSeriesId(null);
   };
 
-  /** Deletes every block in the week. Day tags are left alone. */
+  /**
+   * Deletes every block in this planner's week. Day tags are left alone, and
+   * the account's other planners are untouched.
+   */
   const clearWeek = async () => {
     setClearing(true);
     setDbError(null);
-    const { error } = await supabase.from('planner_blocks').delete().eq('user_id', userId);
+    const { error } = await supabase
+      .from('planner_blocks')
+      .delete()
+      .eq('planner_id', plannerId);
     setClearing(false);
     if (error) {
       console.error('Failed to clear the week', error);
@@ -656,8 +666,11 @@ export function Planner() {
     const { error } = next
       ? await supabase
           .from('day_tags')
-          .upsert({ user_id: userId, day, tag: next }, { onConflict: 'user_id,day' })
-      : await supabase.from('day_tags').delete().eq('user_id', userId).eq('day', day);
+          .upsert(
+            { user_id: userId, planner_id: plannerId, day, tag: next },
+            { onConflict: 'planner_id,day' }
+          )
+      : await supabase.from('day_tags').delete().eq('planner_id', plannerId).eq('day', day);
 
     if (error) {
       console.error('Failed to save day tag', error);
@@ -709,15 +722,15 @@ export function Planner() {
         className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md"
       >
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-900 text-white">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
               <CalendarDays className="h-5 w-5" />
             </div>
-            <div>
-              <h1 className="text-lg font-semibold tracking-tight text-slate-900">
-                Weekly Planner
-              </h1>
-              <p className="text-xs text-slate-500">✨ Dodo & Marie's reusable week template ✨</p>
+            <div className="min-w-0">
+              <PlannerSwitcher store={plannerStore} />
+              <p className="truncate text-xs text-slate-500">
+                ✨ Dodo & Marie's reusable week template ✨
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -749,12 +762,16 @@ export function Planner() {
       </header>
 
       <main className="mx-auto max-w-7xl px-2 py-6 sm:px-6">
-        {dbError && (
+        {/* Whatever went wrong last, whether it was this week or the switcher. */}
+        {(dbError || plannerStore.error) && (
           <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             <X className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="flex-1">{dbError}</span>
+            <span className="flex-1">{dbError ?? plannerStore.error}</span>
             <button
-              onClick={() => setDbError(null)}
+              onClick={() => {
+                setDbError(null);
+                plannerStore.dismissError();
+              }}
               className="rounded p-0.5 text-red-500 transition-colors hover:bg-red-100 hover:text-red-700"
               aria-label="Dismiss error"
             >
