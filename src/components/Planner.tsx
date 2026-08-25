@@ -768,6 +768,26 @@ export function Planner({
                 zIndex: 25,
               }}
             />
+            {/*
+              Midnight, on the line the day starts at. Every other hour label
+              straddles its own line, but that line is the top edge of the grid
+              body — so this one is hung from the bottom of the header row
+              instead, which is the only space above it.
+
+              It shares the corner's cell but is not part of it: the corner is
+              sticky, and a label pinned there would keep claiming midnight
+              while you read the afternoon. This one scrolls away with the
+              hours it belongs to, passing over the corner (which is empty) on
+              its way out.
+            */}
+            <div
+              className="pointer-events-none relative"
+              style={{ gridColumn: '1', gridRow: '1', zIndex: 26 }}
+            >
+              <span className="absolute -bottom-0.5 right-2 text-[10px] font-medium text-slate-400">
+                {formatHour(0)}
+              </span>
+            </div>
             {dayLabels.map((label, idx) => {
               const isToday = idx === todayIndex;
               return (
@@ -1080,9 +1100,25 @@ function HourRow({
           gridRow: `${baseSlot + 2} / ${baseSlot + 2 + slotsInHour}`,
         }}
       >
-        <span className="absolute -top-2.5 right-2 text-[10px] font-medium text-slate-400">
-          {formatHour(hour)}
-        </span>
+        {/*
+          Straddles the line its hour starts on. Midnight's line is the top of
+          the grid body, so that one is drawn up in the header row instead.
+        */}
+        {hour > 0 && (
+          <span className="absolute -top-2.5 right-2 text-[10px] font-medium text-slate-400">
+            {formatHour(hour)}
+          </span>
+        )}
+        {/*
+          Midnight again, closing the day. Nothing draws a label at the foot of
+          the last hour, so the column would otherwise run out with 11 PM as
+          its last marking.
+        */}
+        {isLastHour && (
+          <span className="absolute bottom-0.5 right-2 text-[10px] font-medium text-slate-400">
+            {formatHour(0)}
+          </span>
+        )}
       </div>
       {/* Slot cells */}
       {Array.from({ length: dayCount }, (_, dayIdx) => (
