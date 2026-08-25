@@ -30,8 +30,10 @@ import {
 import { useAuth } from '@/lib/auth';
 import { describeDbError } from '@/lib/errors';
 import type { PlannerStore } from '@/lib/planners';
+import type { PeopleStore } from '@/lib/people';
 import { EditPanel } from './EditPanel';
-import { PlannerSwitcher } from './PlannerSwitcher';
+import { PeopleAvatars } from './People';
+import { NewPlannerButton, PlannerSwitcher } from './PlannerSwitcher';
 import {
   Building2,
   CalendarDays,
@@ -85,6 +87,7 @@ function selectionToDraft(sel: Selection): BlockDraft {
     start_minute: slotStart * SLOT_MINUTES,
     end_minute: Math.min(slotEnd * SLOT_MINUTES, MINUTES_PER_DAY),
     days: range(Math.min(sel.dayStart, sel.dayEnd), Math.max(sel.dayStart, sel.dayEnd)),
+    people: [],
   };
 }
 
@@ -97,6 +100,8 @@ function seriesToDraft(rows: PlannerBlock[]): BlockDraft {
     start_minute: first.start_minute,
     end_minute: first.end_minute,
     days: rows.map((r) => r.day_start).sort((a, b) => a - b),
+    // Every row of a series carries the same people; the first one speaks for all.
+    people: first.people ?? [],
   };
 }
 
@@ -117,6 +122,7 @@ function draftToRows(
     day_end: day,
     start_minute: draft.start_minute,
     end_minute: draft.end_minute,
+    people: draft.people,
     // Legacy columns, kept in sync so older readers still work.
     hour_start: Math.floor(draft.start_minute / 60),
     hour_end: Math.ceil(draft.end_minute / 60),
@@ -316,9 +322,11 @@ function useElementHeight<T extends HTMLElement>(ref: React.RefObject<T | null>)
 export function Planner({
   plannerId,
   plannerStore,
+  peopleStore,
 }: {
   plannerId: string;
   plannerStore: PlannerStore;
+  peopleStore: PeopleStore;
 }) {
   const { user, signOut } = useAuth();
   // Planner only renders behind the auth gate, so this is always set.
@@ -585,6 +593,7 @@ export function Planner({
       text_color: d.text_color,
       start_minute: d.start_minute,
       end_minute: d.end_minute,
+      people: d.people,
       hour_start: Math.floor(d.start_minute / 60),
       hour_end: Math.ceil(d.end_minute / 60),
     };
@@ -738,6 +747,7 @@ export function Planner({
               <Plus className="h-3.5 w-3.5" />
               Drag down to set the time, across to repeat it
             </div>
+            <NewPlannerButton onCreate={plannerStore.create} />
             <ClearWeekButton
               blockCount={blocks.length}
               confirming={confirmingClear}
@@ -763,14 +773,15 @@ export function Planner({
 
       <main className="mx-auto max-w-7xl px-2 py-6 sm:px-6">
         {/* Whatever went wrong last, whether it was this week or the switcher. */}
-        {(dbError || plannerStore.error) && (
+        {(dbError || plannerStore.error || peopleStore.error) && (
           <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             <X className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="flex-1">{dbError ?? plannerStore.error}</span>
+            <span className="flex-1">{dbError ?? plannerStore.error ?? peopleStore.error}</span>
             <button
               onClick={() => {
                 setDbError(null);
                 plannerStore.dismissError();
+                peopleStore.dismissError();
               }}
               className="rounded p-0.5 text-red-500 transition-colors hover:bg-red-100 hover:text-red-700"
               aria-label="Dismiss error"
@@ -931,10 +942,17 @@ export function Planner({
                   >
                     {repeatCount > 1 && <Repeat className="h-3 w-3 shrink-0 opacity-80" />}
                     <span className="truncate">{b.title}</span>
+                    {/* A compact block has no second line to put them on. */}
+                    {isCompact && (
+                      <PeopleAvatars ids={b.people} byId={peopleStore.byId} size="sm" />
+                    )}
                   </span>
                   {!isCompact && (
-                    <span className="mt-0.5 text-[10px] leading-tight opacity-80">
-                      {formatTime(b.start_minute)} – {formatTime(b.end_minute)}
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[10px] leading-tight opacity-80">
+                      <span className="truncate">
+                        {formatTime(b.start_minute)} – {formatTime(b.end_minute)}
+                      </span>
+                      <PeopleAvatars ids={b.people} byId={peopleStore.byId} />
                     </span>
                   )}
                 </button>
@@ -948,6 +966,7 @@ export function Planner({
         <EditPanel
           draft={activeDraft}
           recentColors={recentColors}
+          peopleStore={peopleStore}
           isEditing={editingSeries.length > 0}
           onSave={(d) =>
             editingSeriesId ? updateSeries(editingSeriesId, d) : saveDraft(d)

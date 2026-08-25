@@ -18,6 +18,18 @@ export type PlannerRecord = {
 };
 
 /**
+ * Someone a block can be tagged with. Just a name on the account's own list —
+ * no invite, no sign-in, nothing shared.
+ */
+export type Person = {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  created_at: string;
+};
+
+/**
  * One row = one day. A block repeated across several days is several rows
  * sharing a `series_id`; `day_start` and `day_end` are always equal.
  */
@@ -33,6 +45,8 @@ export type PlannerBlock = {
   end_minute: number;
   series_id: string;
   text_color: string;
+  /** Ids from `people`. Unknown ids are ignored, since a person can be deleted. */
+  people: string[];
   created_at: string;
 };
 
@@ -44,6 +58,7 @@ export type BlockDraft = {
   start_minute: number;
   end_minute: number;
   days: number[];
+  people: string[];
 };
 
 export type RecentColor = {

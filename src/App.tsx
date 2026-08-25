@@ -1,6 +1,7 @@
 import { Planner } from '@/components/Planner';
 import { SignIn } from '@/components/SignIn';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { usePeople } from '@/lib/people';
 import { usePlanners } from '@/lib/planners';
 import { Loader2 } from 'lucide-react';
 
@@ -13,14 +14,19 @@ function Spinner() {
 }
 
 /**
- * Holds the account's planners and hands the open one to <Planner>. Keying on
- * the planner id means switching remounts the grid with a clean slate, rather
- * than showing the previous planner's blocks until the refetch lands.
+ * Holds what belongs to the account rather than to one week — the planners and
+ * the people who can be tagged — and hands the open planner to <Planner>.
+ * Keying on the planner id means switching remounts the grid with a clean
+ * slate, rather than showing the previous planner's blocks until the refetch
+ * lands. The people outlive that remount, since they are the same everywhere.
  */
 function Workspace({ userId }: { userId: string }) {
   const store = usePlanners(userId);
+  const people = usePeople(userId);
 
-  if (store.loading) return <Spinner />;
+  // Waiting on the people too, so avatars are drawn with the first blocks
+  // rather than popping in a moment later.
+  if (store.loading || people.loading) return <Spinner />;
 
   // Every account is given a planner on first load, so this only happens when
   // that write failed — and the store's error explains why.
@@ -34,7 +40,14 @@ function Workspace({ userId }: { userId: string }) {
     );
   }
 
-  return <Planner key={store.active.id} plannerId={store.active.id} plannerStore={store} />;
+  return (
+    <Planner
+      key={store.active.id}
+      plannerId={store.active.id}
+      plannerStore={store}
+      peopleStore={people}
+    />
+  );
 }
 
 function Gate() {

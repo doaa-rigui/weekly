@@ -89,3 +89,32 @@ export const PALETTE = [
   '#dc2626',
   '#7c3aed',
 ];
+
+/**
+ * Avatar colours for tagged people, handed out in order as people are added so
+ * two names in the same block rarely look alike. Dark enough for white text.
+ */
+export const PEOPLE_PALETTE = [
+  '#0f766e',
+  '#b45309',
+  '#9333ea',
+  '#be123c',
+  '#1d4ed8',
+  '#4d7c0f',
+  '#c2410c',
+  '#0369a1',
+] as const;
+
+/** Longest name the picker will store, so avatars and chips stay in shape. */
+export const PERSON_NAME_MAX = 32;
+
+/** How many avatars a block shows before collapsing the rest into "+N". */
+export const AVATARS_PER_BLOCK = 3;
+
+/** "Marie Curie" -> "MC", "dodo" -> "D". What an avatar shows. */
+export function initialsOf(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return '?';
+  const letters = words.slice(0, 2).map((w) => [...w][0] ?? '');
+  return letters.join('').toUpperCase();
+}

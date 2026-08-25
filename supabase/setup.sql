@@ -28,7 +28,23 @@ CREATE TABLE IF NOT EXISTS planners (
 CREATE INDEX IF NOT EXISTS planners_user_id_created_at_idx
   ON planners (user_id, created_at);
 
--- 2. Blocks -----------------------------------------------------------------
+-- 2. People ---------------------------------------------------------------
+-- Names you can tag on a block, per account. No sharing and no invites: a
+-- person here is a multi-select option, not a user.
+
+CREATE TABLE IF NOT EXISTS people (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  name text NOT NULL,
+  color text NOT NULL DEFAULT '#64748b',
+  created_at timestamptz DEFAULT now()
+);
+
+-- "Marie" and "marie" are the same person.
+CREATE UNIQUE INDEX IF NOT EXISTS people_user_id_name_idx ON people (user_id, lower(name));
+CREATE INDEX IF NOT EXISTS people_user_id_created_at_idx ON people (user_id, created_at);
+
+-- 3. Blocks -----------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS planner_blocks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -44,6 +60,9 @@ CREATE TABLE IF NOT EXISTS planner_blocks (
   end_minute int NOT NULL DEFAULT 60,
   series_id uuid NOT NULL DEFAULT gen_random_uuid(),
   text_color text NOT NULL DEFAULT '#ffffff',
+  -- Who is on this block. An array, not a join table: a repeating block is
+  -- several rows rewritten day by day, and the array travels with the row.
+  people uuid[] NOT NULL DEFAULT '{}',
   created_at timestamptz DEFAULT now(),
   CONSTRAINT day_range_valid CHECK (day_start <= day_end),
   CONSTRAINT hour_range_valid CHECK (hour_start < hour_end)
@@ -52,8 +71,10 @@ CREATE TABLE IF NOT EXISTS planner_blocks (
 CREATE INDEX IF NOT EXISTS planner_blocks_series_id_idx ON planner_blocks (series_id);
 CREATE INDEX IF NOT EXISTS planner_blocks_user_id_idx ON planner_blocks (user_id);
 CREATE INDEX IF NOT EXISTS planner_blocks_planner_id_idx ON planner_blocks (planner_id);
+-- Deleting a person has to find every block mentioning them.
+CREATE INDEX IF NOT EXISTS planner_blocks_people_idx ON planner_blocks USING gin (people);
 
--- 3. Day tags ---------------------------------------------------------------
+-- 4. Day tags ---------------------------------------------------------------
 -- One optional 'remote' / 'office' / 'free' tag per weekday index (0=Mon … 6=Sun),
 -- per planner: a study week and a chores week each tag their own days.
 
@@ -72,7 +93,7 @@ ALTER TABLE day_tags DROP CONSTRAINT IF EXISTS day_tags_tag_valid;
 ALTER TABLE day_tags
   ADD CONSTRAINT day_tags_tag_valid CHECK (tag IN ('remote', 'office', 'free'));
 
--- 4. Recent colours ---------------------------------------------------------
+-- 5. Recent colours ---------------------------------------------------------
 -- The five most recently applied custom colours, kept per picker, per person.
 
 CREATE TABLE IF NOT EXISTS recent_colors (
@@ -91,10 +112,11 @@ ALTER TABLE recent_colors
 CREATE INDEX IF NOT EXISTS recent_colors_kind_used_at_idx
   ON recent_colors (user_id, kind, used_at DESC);
 
--- 5. Security ---------------------------------------------------------------
+-- 6. Security ---------------------------------------------------------------
 -- Signed in, and only your own rows. The anon role gets nothing.
 
 ALTER TABLE planners       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE people         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE planner_blocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE day_tags       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recent_colors  ENABLE ROW LEVEL SECURITY;
@@ -113,6 +135,22 @@ CREATE POLICY "own_planners_update" ON planners FOR UPDATE
 
 DROP POLICY IF EXISTS "own_planners_delete" ON planners;
 CREATE POLICY "own_planners_delete" ON planners FOR DELETE
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_people_select" ON people;
+CREATE POLICY "own_people_select" ON people FOR SELECT
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_people_insert" ON people;
+CREATE POLICY "own_people_insert" ON people FOR INSERT
+  TO authenticated WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_people_update" ON people;
+CREATE POLICY "own_people_update" ON people FOR UPDATE
+  TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_people_delete" ON people;
+CREATE POLICY "own_people_delete" ON people FOR DELETE
   TO authenticated USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "own_blocks_select" ON planner_blocks;

@@ -8,6 +8,8 @@ import {
   MINUTES_PER_DAY,
   type ColorKind,
 } from '@/lib/constants';
+import type { PeopleStore } from '@/lib/people';
+import { PeopleAvatars, PeoplePicker } from './People';
 import { formatTime, summarizeDays } from './Planner';
 import { X, Trash2, Check, Repeat, Loader2 } from 'lucide-react';
 
@@ -101,6 +103,7 @@ function ColorField({
 export function EditPanel({
   draft,
   recentColors,
+  peopleStore,
   isEditing,
   onSave,
   onDelete,
@@ -108,6 +111,7 @@ export function EditPanel({
 }: {
   draft: BlockDraft;
   recentColors: Record<ColorKind, string[]>;
+  peopleStore: PeopleStore;
   isEditing: boolean;
   onSave: (d: BlockDraft) => void | Promise<void>;
   onDelete: () => void | Promise<void>;
@@ -117,6 +121,7 @@ export function EditPanel({
   const [color, setColor] = useState(draft.color);
   const [textColor, setTextColor] = useState(draft.text_color);
   const [days, setDays] = useState<number[]>(draft.days);
+  const [people, setPeople] = useState<string[]>(draft.people);
   // Which write is in flight, so the panel can't be double-submitted or
   // closed out from under a request that is still running.
   const [pending, setPending] = useState<'save' | 'delete' | null>(null);
@@ -167,6 +172,9 @@ export function EditPanel({
         start_minute: startMinute,
         end_minute: endMinute,
         days,
+        // Someone deleted from the list while this panel was open shouldn't be
+        // written back onto the block as a dangling id.
+        people: people.filter((id) => peopleStore.byId.has(id)),
       })
     );
   };
@@ -195,9 +203,12 @@ export function EditPanel({
             <div className="min-w-0">
               <p className="text-xs font-medium uppercase tracking-wider opacity-80">{dayLabel}</p>
               <h2 className="mt-0.5 truncate text-lg font-semibold">{title || 'Untitled'}</h2>
-              <p className="mt-0.5 text-sm opacity-90">
-                {formatTime(startMinute)} – {formatTime(endMinute)}
-                {repeats && ` · repeats on ${days.length} days`}
+              <p className="mt-0.5 flex items-center gap-1.5 text-sm opacity-90">
+                <span className="truncate">
+                  {formatTime(startMinute)} – {formatTime(endMinute)}
+                  {repeats && ` · repeats on ${days.length} days`}
+                </span>
+                <PeopleAvatars ids={people} byId={peopleStore.byId} />
               </p>
             </div>
             <button
@@ -228,6 +239,8 @@ export function EditPanel({
               onKeyDown={(e) => e.key === 'Enter' && handleSave()}
             />
           </div>
+
+          <PeoplePicker selected={people} onChange={setPeople} store={peopleStore} />
 
           <ColorField
             label="Block color"

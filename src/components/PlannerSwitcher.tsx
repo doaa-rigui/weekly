@@ -16,10 +16,9 @@ type RowMode = { kind: 'renaming'; id: string } | { kind: 'deleting'; id: string
  * readout, so switching costs no layout at all.
  */
 export function PlannerSwitcher({ store }: { store: PlannerStore }) {
-  const { planners, active, select, create, rename, duplicate, remove } = store;
+  const { planners, active, select, rename, duplicate, remove } = store;
   const [open, setOpen] = useState(false);
   const [rowMode, setRowMode] = useState<RowMode>(null);
-  const [creating, setCreating] = useState(false);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -27,40 +26,23 @@ export function PlannerSwitcher({ store }: { store: PlannerStore }) {
   const close = () => {
     setOpen(false);
     setRowMode(null);
-    setCreating(false);
   };
 
-  // A menu that outlives a click elsewhere on the page reads as stuck.
-  useEffect(() => {
-    if (!open) return;
-
-    const onPointerDown = (e: PointerEvent) => {
-      if (rootRef.current?.contains(e.target as Node)) return;
-      // An open name field commits on blur, so blur it here: closing the menu
-      // first would unmount it and throw the typed name away.
-      (document.activeElement as HTMLElement | null)?.blur();
-      close();
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Escape backs out of a rename or a delete prompt one step at a time,
-      // so a mistyped name doesn't also cost you the open menu.
-      if (rowMode || creating) {
+  useDismiss({
+    open,
+    rootRef,
+    onDismiss: close,
+    // Escape backs out of a rename or a delete prompt one step at a time, so a
+    // mistyped name doesn't also cost you the open menu.
+    onEscape: () => {
+      if (rowMode) {
         setRowMode(null);
-        setCreating(false);
         return;
       }
       close();
       triggerRef.current?.focus();
-    };
-
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open, rowMode, creating]);
+    },
+  });
 
   return (
     <div ref={rootRef} className="relative">
@@ -124,34 +106,107 @@ export function PlannerSwitcher({ store }: { store: PlannerStore }) {
               </li>
             ))}
           </ul>
-
-          <div className="border-t border-slate-100 p-1">
-            {creating ? (
-              <NameInput
-                placeholder="Chores planner"
-                onSubmit={(name) => {
-                  create(name);
-                  close();
-                }}
-                onCancel={() => setCreating(false)}
-              />
-            ) : (
-              <button
-                onClick={() => {
-                  setRowMode(null);
-                  setCreating(true);
-                }}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900"
-              >
-                <Plus className="h-4 w-4" />
-                New planner
-              </button>
-            )}
-          </div>
         </div>
       )}
     </div>
   );
+}
+
+/**
+ * Creating lives in the app bar rather than at the foot of the switcher: it is
+ * an action on the account, not a way of choosing between planners, and it is
+ * the one thing you may want when no menu is open.
+ */
+export function NewPlannerButton({ onCreate }: { onCreate: (name: string) => void }) {
+  const [naming, setNaming] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+
+  const close = () => setNaming(false);
+
+  useDismiss({
+    open: naming,
+    rootRef,
+    onDismiss: close,
+    onEscape: () => {
+      close();
+      triggerRef.current?.focus();
+    },
+  });
+
+  return (
+    <div ref={rootRef} className="relative">
+      <button
+        ref={triggerRef}
+        onClick={() => setNaming((prev) => !prev)}
+        aria-expanded={naming}
+        title="Create a new planner"
+        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-slate-300 hover:bg-slate-100"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        {/* The icon carries it on narrow screens, where the bar is crowded. */}
+        <span className="hidden sm:inline">New planner</span>
+      </button>
+
+      {naming && (
+        // Right-aligned: the button sits in the right-hand action group, so a
+        // left-aligned panel would hang off the edge of the window.
+        <div className="absolute right-0 top-full z-40 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
+          <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+            Name your planner
+          </p>
+          <NameInput
+            placeholder="Chores planner"
+            onSubmit={(name) => {
+              onCreate(name);
+              close();
+            }}
+            onCancel={close}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Closes a popover on a click outside it or on Escape. Shared by the switcher
+ * and the create button — both hold a name field that commits on blur, which
+ * is why the outside click blurs before it closes.
+ */
+function useDismiss({
+  open,
+  rootRef,
+  onDismiss,
+  onEscape,
+}: {
+  open: boolean;
+  rootRef: React.RefObject<HTMLElement | null>;
+  onDismiss: () => void;
+  onEscape: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      if (rootRef.current?.contains(e.target as Node)) return;
+      // An open name field commits on blur, so blur it here: closing first
+      // would unmount the field and throw the typed name away.
+      (document.activeElement as HTMLElement | null)?.blur();
+      onDismiss();
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onEscape();
+    };
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+    // onEscape closes over the current row mode, so it is refreshed each render.
+  }, [open, rootRef, onDismiss, onEscape]);
 }
 
 function PlannerRow({
