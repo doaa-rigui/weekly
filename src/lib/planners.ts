@@ -1,12 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { supabase, type PlannerBlock, type DayTag, type PlannerRecord } from './supabase';
+import {
+  supabase,
+  type PlannerBlock,
+  type DayTag,
+  type DayTagOption,
+  type PlannerRecord,
+} from './supabase';
 import { describeDbError } from './errors';
+import { DEFAULT_PLANNER_DAYS, MAX_PLANNER_DAYS, MIN_PLANNER_DAYS } from './constants';
 
 /** What a brand-new account's first planner is called. */
 export const DEFAULT_PLANNER_NAME = 'My Planner';
 
 /** Longest name the switcher can show without the row wrapping. */
 export const PLANNER_NAME_MAX = 40;
+
+/** The database has the same bounds; this keeps a typo from making the trip. */
+function clampDayCount(dayCount: number): number {
+  if (!Number.isFinite(dayCount)) return DEFAULT_PLANNER_DAYS;
+  return Math.min(Math.max(Math.round(dayCount), MIN_PLANNER_DAYS), MAX_PLANNER_DAYS);
+}
 
 /** Remembers which planner was open, per account, across reloads. */
 function activeKey(userId: string): string {
@@ -38,7 +51,7 @@ export type PlannerStore = {
   error: string | null;
   dismissError: () => void;
   select: (id: string) => void;
-  create: (name: string) => Promise<void>;
+  create: (name: string, dayCount: number) => Promise<void>;
   rename: (id: string, name: string) => Promise<void>;
   /** Copies a planner's blocks and day tags into a new one beside it. */
   duplicate: (id: string) => Promise<void>;
@@ -130,11 +143,15 @@ export function usePlanners(userId: string): PlannerStore {
   );
 
   const create = useCallback(
-    async (name: string) => {
+    async (name: string, dayCount: number) => {
       setError(null);
       const { data, error: err } = await supabase
         .from('planners')
-        .insert({ user_id: userId, name: name.trim().slice(0, PLANNER_NAME_MAX) })
+        .insert({
+          user_id: userId,
+          name: name.trim().slice(0, PLANNER_NAME_MAX),
+          day_count: clampDayCount(dayCount),
+        })
         .select()
         .single();
       if (err || !data) {
@@ -177,7 +194,11 @@ export function usePlanners(userId: string): PlannerStore {
 
       const { data: created, error: createErr } = await supabase
         .from('planners')
-        .insert({ user_id: userId, name: `${source.name} copy`.slice(0, PLANNER_NAME_MAX) })
+        .insert({
+          user_id: userId,
+          name: `${source.name} copy`.slice(0, PLANNER_NAME_MAX),
+          day_count: source.day_count,
+        })
         .select()
         .single();
       if (createErr || !created) {
@@ -189,12 +210,13 @@ export function usePlanners(userId: string): PlannerStore {
       }
       const copy = created as PlannerRecord;
 
-      const [blockRes, tagRes] = await Promise.all([
+      const [blockRes, tagRes, optionRes] = await Promise.all([
         supabase.from('planner_blocks').select('*').eq('planner_id', id),
         supabase.from('day_tags').select('*').eq('planner_id', id),
+        supabase.from('day_tag_options').select('*').eq('planner_id', id),
       ]);
 
-      const readFailure = blockRes.error ?? tagRes.error;
+      const readFailure = blockRes.error ?? tagRes.error ?? optionRes.error;
       if (readFailure) {
         console.error('Failed to read the planner being duplicated', readFailure);
         setError(describeDbError('copy the planner contents', readFailure));
@@ -231,21 +253,58 @@ export function usePlanners(userId: string): PlannerStore {
         };
       });
 
-      const tagRows = ((tagRes.data ?? []) as DayTag[]).map((t) => ({
-        user_id: userId,
-        planner_id: copy.id,
-        day: t.day,
-        tag: t.tag,
-      }));
+      // The copy needs its own tag rows, which means its own tag ids: the
+      // options are written first so the tagged days can point at the new ones.
+      const sourceOptions = (optionRes.data ?? []) as DayTagOption[];
+      const optionIds = new Map<string, string>();
 
-      const writes = await Promise.all([
-        blockRows.length
-          ? supabase.from('planner_blocks').insert(blockRows)
-          : Promise.resolve({ error: null }),
-        tagRows.length
-          ? supabase.from('day_tags').insert(tagRows)
-          : Promise.resolve({ error: null }),
-      ]);
+      const writes: { error: { code?: string; message: string } | null }[] = [];
+
+      if (sourceOptions.length) {
+        const { data: copiedOptions, error: optionErr } = await supabase
+          .from('day_tag_options')
+          .insert(
+            sourceOptions.map((o) => ({
+              user_id: userId,
+              planner_id: copy.id,
+              label: o.label,
+              color: o.color,
+              sort_order: o.sort_order,
+            }))
+          )
+          .select();
+
+        if (optionErr) {
+          writes.push({ error: optionErr });
+        } else {
+          // Insert order is preserved, so the copies line up with their sources.
+          (copiedOptions as DayTagOption[]).forEach((copied, i) => {
+            optionIds.set(sourceOptions[i].id, copied.id);
+          });
+        }
+      }
+
+      const tagRows = ((tagRes.data ?? []) as DayTag[])
+        .map((t) => ({
+          user_id: userId,
+          planner_id: copy.id,
+          day: t.day,
+          option_id: optionIds.get(t.option_id),
+        }))
+        // A day whose tag failed to copy is left untagged rather than pointed
+        // at the original planner's tag.
+        .filter((row): row is typeof row & { option_id: string } => row.option_id !== undefined);
+
+      writes.push(
+        ...(await Promise.all([
+          blockRows.length
+            ? supabase.from('planner_blocks').insert(blockRows)
+            : Promise.resolve({ error: null }),
+          tagRows.length
+            ? supabase.from('day_tags').insert(tagRows)
+            : Promise.resolve({ error: null }),
+        ]))
+      );
 
       const writeFailure = writes.find((r) => r.error)?.error;
       if (writeFailure) {

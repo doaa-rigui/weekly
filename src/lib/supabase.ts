@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { ColorKind, DayTagValue } from './constants';
+import type { ColorKind } from './constants';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -14,6 +14,8 @@ export type PlannerRecord = {
   id: string;
   user_id: string;
   name: string;
+  /** How many day columns this planner draws. 7 unless it was made otherwise. */
+  day_count: number;
   created_at: string;
 };
 
@@ -68,10 +70,22 @@ export type RecentColor = {
   used_at: string;
 };
 
+/** One of a planner's own day tags — 'Office', 'Deep clean', whatever fits. */
+export type DayTagOption = {
+  id: string;
+  user_id: string;
+  planner_id: string;
+  label: string;
+  color: string;
+  sort_order: number;
+  created_at: string;
+};
+
+/** Which tag a day carries. At most one per day, per planner. */
 export type DayTag = {
   user_id: string;
   planner_id: string;
   day: number;
-  tag: DayTagValue;
+  option_id: string;
   created_at: string;
 };

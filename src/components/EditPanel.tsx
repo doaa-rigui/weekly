@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import type { BlockDraft } from '@/lib/supabase';
 import {
-  DAYS,
-  FULL_DAYS,
   PALETTE,
   TEXT_PALETTE,
   MINUTES_PER_DAY,
+  summarizeDays,
   type ColorKind,
+  type DayLabel,
 } from '@/lib/constants';
 import type { PeopleStore } from '@/lib/people';
 import { PeopleAvatars, PeoplePicker } from './People';
-import { formatTime, summarizeDays } from './Planner';
+import { formatTime } from './Planner';
 import { X, Trash2, Check, Repeat, Loader2 } from 'lucide-react';
 
 const HOURS_24 = Array.from({ length: 24 }, (_, i) => i);
@@ -104,6 +104,7 @@ export function EditPanel({
   draft,
   recentColors,
   peopleStore,
+  dayLabels,
   isEditing,
   onSave,
   onDelete,
@@ -112,6 +113,8 @@ export function EditPanel({
   draft: BlockDraft;
   recentColors: Record<ColorKind, string[]>;
   peopleStore: PeopleStore;
+  /** The open planner's columns — a fortnight has fourteen, not seven. */
+  dayLabels: DayLabel[];
   isEditing: boolean;
   onSave: (d: BlockDraft) => void | Promise<void>;
   onDelete: () => void | Promise<void>;
@@ -137,7 +140,8 @@ export function EditPanel({
   const endMinute = endH * 60 + endM;
   const repeats = days.length > 1;
 
-  const dayLabel = days.length === 1 ? FULL_DAYS[days[0]] : summarizeDays(days);
+  const dayLabel =
+    days.length === 1 ? (dayLabels[days[0]]?.full ?? 'Day 1') : summarizeDays(days, dayLabels);
 
   // Every row covers a single day, so the end must always follow the start.
   const endInvalid = endMinute <= startMinute;
@@ -265,24 +269,27 @@ export function EditPanel({
                 <Repeat className="h-3.5 w-3.5" />
                 Repeats on
               </label>
-              <span className="text-xs font-medium text-slate-400">{summarizeDays(days)}</span>
+              <span className="text-xs font-medium text-slate-400">
+                {summarizeDays(days, dayLabels)}
+              </span>
             </div>
+            {/* Seven to a row, so a fortnight reads as two weeks stacked. */}
             <div className="grid grid-cols-7 gap-1.5">
-              {DAYS.map((d, i) => {
+              {dayLabels.map((label, i) => {
                 const active = days.includes(i);
                 return (
                   <button
-                    key={d}
+                    key={i}
                     onClick={() => toggleDay(i)}
                     aria-pressed={active}
-                    title={FULL_DAYS[i]}
+                    title={label.full}
                     className={`rounded-lg border py-1.5 text-xs font-semibold transition-colors ${
                       active
                         ? 'border-slate-900 bg-slate-900 text-white'
                         : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
                     }`}
                   >
-                    {d}
+                    {label.short}
                   </button>
                 );
               })}

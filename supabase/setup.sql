@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS planners (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
   name text NOT NULL,
+  -- How many day columns the grid draws: a week, a fortnight, whatever fits.
+  day_count int NOT NULL DEFAULT 7 CHECK (day_count BETWEEN 1 AND 31),
   created_at timestamptz DEFAULT now()
 );
 
@@ -52,8 +54,8 @@ CREATE TABLE IF NOT EXISTS planner_blocks (
   planner_id uuid NOT NULL REFERENCES planners (id) ON DELETE CASCADE,
   title text NOT NULL,
   color text NOT NULL DEFAULT '#2563eb',
-  day_start int NOT NULL CHECK (day_start BETWEEN 0 AND 6),
-  day_end int NOT NULL CHECK (day_end BETWEEN 0 AND 6),
+  day_start int NOT NULL CHECK (day_start BETWEEN 0 AND 30),
+  day_end int NOT NULL CHECK (day_end BETWEEN 0 AND 30),
   hour_start int CHECK (hour_start BETWEEN 0 AND 23),
   hour_end int CHECK (hour_end BETWEEN 1 AND 24),
   start_minute int NOT NULL DEFAULT 0,
@@ -75,23 +77,35 @@ CREATE INDEX IF NOT EXISTS planner_blocks_planner_id_idx ON planner_blocks (plan
 CREATE INDEX IF NOT EXISTS planner_blocks_people_idx ON planner_blocks USING gin (people);
 
 -- 4. Day tags ---------------------------------------------------------------
--- One optional 'remote' / 'office' / 'free' tag per weekday index (0=Mon … 6=Sun),
--- per planner: a study week and a chores week each tag their own days.
+-- Each planner writes its own tags — Remote / Office / Free for a work week,
+-- Deep clean / Restock / Reset for a chores one — and a day carries at most
+-- one of them.
+
+CREATE TABLE IF NOT EXISTS day_tag_options (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  planner_id uuid NOT NULL REFERENCES planners (id) ON DELETE CASCADE,
+  label text NOT NULL,
+  color text NOT NULL DEFAULT '#64748b',
+  sort_order int NOT NULL DEFAULT 0,
+  created_at timestamptz DEFAULT now()
+);
+
+-- "Reset" and "reset" are the same tag.
+CREATE UNIQUE INDEX IF NOT EXISTS day_tag_options_planner_label_idx
+  ON day_tag_options (planner_id, lower(label));
+CREATE INDEX IF NOT EXISTS day_tag_options_planner_sort_idx
+  ON day_tag_options (planner_id, sort_order, created_at);
 
 CREATE TABLE IF NOT EXISTS day_tags (
   user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
   planner_id uuid NOT NULL REFERENCES planners (id) ON DELETE CASCADE,
-  day int NOT NULL CHECK (day BETWEEN 0 AND 6),
-  tag text NOT NULL,
+  day int NOT NULL CHECK (day BETWEEN 0 AND 30),
+  -- Cascading, so deleting a tag clears it off the days that carried it.
+  option_id uuid NOT NULL REFERENCES day_tag_options (id) ON DELETE CASCADE,
   created_at timestamptz DEFAULT now(),
   PRIMARY KEY (planner_id, day)
 );
-
--- Stated separately so the accepted values can widen without recreating the table.
-ALTER TABLE day_tags DROP CONSTRAINT IF EXISTS day_tags_tag_check;
-ALTER TABLE day_tags DROP CONSTRAINT IF EXISTS day_tags_tag_valid;
-ALTER TABLE day_tags
-  ADD CONSTRAINT day_tags_tag_valid CHECK (tag IN ('remote', 'office', 'free'));
 
 -- 5. Recent colours ---------------------------------------------------------
 -- The five most recently applied custom colours, kept per picker, per person.
@@ -119,6 +133,7 @@ ALTER TABLE planners       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE people         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE planner_blocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE day_tags       ENABLE ROW LEVEL SECURITY;
+ALTER TABLE day_tag_options ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recent_colors  ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "own_planners_select" ON planners;
@@ -167,6 +182,22 @@ CREATE POLICY "own_blocks_update" ON planner_blocks FOR UPDATE
 
 DROP POLICY IF EXISTS "own_blocks_delete" ON planner_blocks;
 CREATE POLICY "own_blocks_delete" ON planner_blocks FOR DELETE
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_day_tag_options_select" ON day_tag_options;
+CREATE POLICY "own_day_tag_options_select" ON day_tag_options FOR SELECT
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_day_tag_options_insert" ON day_tag_options;
+CREATE POLICY "own_day_tag_options_insert" ON day_tag_options FOR INSERT
+  TO authenticated WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_day_tag_options_update" ON day_tag_options;
+CREATE POLICY "own_day_tag_options_update" ON day_tag_options FOR UPDATE
+  TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_day_tag_options_delete" ON day_tag_options;
+CREATE POLICY "own_day_tag_options_delete" ON day_tag_options FOR DELETE
   TO authenticated USING (user_id = auth.uid());
 
 DROP POLICY IF EXISTS "own_day_tags_select" ON day_tags;

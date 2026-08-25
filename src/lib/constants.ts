@@ -24,16 +24,97 @@ export function msUntilNextMidnight(now: Date): number {
   return midnight.getTime() - now.getTime();
 }
 
-export type DayTagValue = 'remote' | 'office' | 'free';
+/** Longest day-tag label the picker will store, so pills stay pill-shaped. */
+export const DAY_TAG_LABEL_MAX = 24;
 
-/** Clicking a day's tag steps through this list and wraps back to null (no tag). */
-export const DAY_TAG_CYCLE: (DayTagValue | null)[] = ['remote', 'office', 'free', null];
+/**
+ * Pill colours for a planner's day tags, handed out in order as they are
+ * added. Mid-weight, so white text sits on them and they don't shout over the
+ * blocks in the grid.
+ */
+export const DAY_TAG_PALETTE = [
+  '#059669',
+  '#4f46e5',
+  '#d97706',
+  '#0891b2',
+  '#db2777',
+  '#65a30d',
+  '#7c3aed',
+  '#dc2626',
+] as const;
 
-export const DAY_TAG_STYLES: Record<DayTagValue, { label: string; className: string }> = {
-  remote: { label: 'Remote', className: 'border-emerald-200 bg-emerald-50 text-emerald-700' },
-  office: { label: 'Office', className: 'border-indigo-200 bg-indigo-50 text-indigo-700' },
-  free: { label: 'Free', className: 'border-amber-200 bg-amber-50 text-amber-700' },
+/** Lower bound, upper bound and default for how many days a planner runs. */
+export const MIN_PLANNER_DAYS = 1;
+export const MAX_PLANNER_DAYS = 31;
+export const DEFAULT_PLANNER_DAYS = 7;
+
+/** The lengths worth one click in the create panel. */
+export const PLANNER_LENGTH_PRESETS = [
+  { days: 7, label: '1 week' },
+  { days: 14, label: '2 weeks' },
+] as const;
+
+/**
+ * Below this the day columns stop being usable, so a long planner scrolls
+ * sideways instead of squeezing.
+ */
+export const MIN_DAY_COLUMN_WIDTH = 72;
+
+/**
+ * Weekday names only mean something when the planner's length lines up with a
+ * week — seven days, a fortnight, three weeks. A ten-day planner is numbered
+ * days instead, since calling day 8 "Monday" would be a lie.
+ */
+export function isWeekBased(dayCount: number): boolean {
+  return dayCount <= 7 || dayCount % 7 === 0;
+}
+
+export type DayLabel = {
+  /** Column heading: "Mon", or "D8" when the planner isn't week-shaped. */
+  short: string;
+  /** Spelled out, for titles and the edit panel: "Monday, week 2". */
+  full: string;
+  /** 1-based, and only shown once a planner runs longer than a week. */
+  week: number;
 };
+
+/**
+ * What each column of a planner is called. Monday-first, cycling through the
+ * weekdays for as many weeks as the planner runs.
+ */
+export function dayLabelsFor(dayCount: number): DayLabel[] {
+  const weekBased = isWeekBased(dayCount);
+  const weeks = Math.ceil(dayCount / 7);
+
+  return Array.from({ length: dayCount }, (_, i) => {
+    const week = Math.floor(i / 7) + 1;
+    if (!weekBased) {
+      return { short: `D${i + 1}`, full: `Day ${i + 1}`, week };
+    }
+    const name = FULL_DAYS[i % 7];
+    return {
+      short: DAYS[i % 7],
+      full: weeks > 1 ? `${name}, week ${week}` : name,
+      week,
+    };
+  });
+}
+
+/**
+ * "Every day", "Mon – Fri" for a run, otherwise "Mon, Wed, Fri". Takes the
+ * planner's own labels, since a fortnight has two Mondays and a numbered
+ * planner has no weekdays at all.
+ */
+export function summarizeDays(days: number[], labels: DayLabel[]): string {
+  if (days.length === 0) return 'No days';
+  const sorted = [...days].sort((a, b) => a - b);
+  const name = (day: number) => labels[day]?.short ?? `D${day + 1}`;
+
+  if (sorted.length === labels.length && labels.length > 0) return 'Every day';
+  const isRun = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
+  if (isRun && sorted.length > 2) return `${name(sorted[0])} – ${name(sorted[sorted.length - 1])}`;
+  return sorted.map(name).join(', ');
+}
 
 /** Total minutes in a day. */
 export const MINUTES_PER_DAY = 1440;
@@ -67,28 +148,14 @@ export const RECENT_COLOR_LIMIT = 5;
 export const DEFAULT_TEXT_COLOR = '#ffffff';
 
 /** Readable label colours: light ones for dark blocks, dark ones for pale blocks. */
-export const TEXT_PALETTE = [
-  '#ffffff',
-  '#f1f5f9',
-  '#cbd5e1',
-  '#64748b',
-  '#1e293b',
-  '#000000',
-];
+export const TEXT_PALETTE = ['#ffffff', '#f1f5f9', '#cbd5e1', '#64748b', '#1e293b', '#000000'];
 
 /**
  * One row of six in the picker, so the edit panel stays short enough to fit on
  * screen. Hues are spread wide apart to keep adjacent blocks distinguishable;
  * anything else is reachable through the custom picker.
  */
-export const PALETTE = [
-  '#2563eb',
-  '#0891b2',
-  '#059669',
-  '#d97706',
-  '#dc2626',
-  '#7c3aed',
-];
+export const PALETTE = ['#2563eb', '#0891b2', '#059669', '#d97706', '#dc2626', '#7c3aed'];
 
 /**
  * Avatar colours for tagged people, handed out in order as people are added so

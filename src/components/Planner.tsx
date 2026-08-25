@@ -3,11 +3,10 @@ import {
   supabase,
   type PlannerBlock,
   type BlockDraft,
-  type DayTag,
+  type PlannerRecord,
   type RecentColor,
 } from '@/lib/supabase';
 import {
-  DAYS,
   HOURS,
   HOUR_HEIGHT,
   SLOT_HEIGHT,
@@ -20,40 +19,25 @@ import {
   TEXT_PALETTE,
   DEFAULT_TEXT_COLOR,
   RECENT_COLOR_LIMIT,
-  DAY_TAG_CYCLE,
-  DAY_TAG_STYLES,
+  MIN_DAY_COLUMN_WIDTH,
   dayIndexOf,
+  dayLabelsFor,
+  isWeekBased,
   msUntilNextMidnight,
+  summarizeDays,
   type ColorKind,
-  type DayTagValue,
+  type DayLabel,
 } from '@/lib/constants';
 import { useAuth } from '@/lib/auth';
 import { describeDbError } from '@/lib/errors';
 import type { PlannerStore } from '@/lib/planners';
 import type { PeopleStore } from '@/lib/people';
+import { useDayTags } from '@/lib/dayTags';
+import { DayTagMenu } from './DayTagMenu';
 import { EditPanel } from './EditPanel';
 import { PeopleAvatars } from './People';
 import { NewPlannerButton, PlannerSwitcher } from './PlannerSwitcher';
-import {
-  Building2,
-  CalendarDays,
-  House,
-  Loader2,
-  LogOut,
-  Palmtree,
-  Plus,
-  Repeat,
-  Trash2,
-  X,
-} from 'lucide-react';
-
-type DayTagMap = Partial<Record<number, DayTagValue>>;
-
-const DAY_TAG_ICONS = {
-  remote: House,
-  office: Building2,
-  free: Palmtree,
-} as const;
+import { CalendarDays, Loader2, LogOut, Plus, Repeat, Trash2, X } from 'lucide-react';
 
 /** A drag in progress: an anchor cell plus wherever the pointer is now. */
 type Selection = {
@@ -106,12 +90,7 @@ function seriesToDraft(rows: PlannerBlock[]): BlockDraft {
 }
 
 /** The DB rows a draft expands to — one per day, all sharing a series id. */
-function draftToRows(
-  draft: BlockDraft,
-  seriesId: string,
-  userId: string,
-  plannerId: string
-) {
+function draftToRows(draft: BlockDraft, seriesId: string, userId: string, plannerId: string) {
   return draft.days.map((day) => ({
     user_id: userId,
     planner_id: plannerId,
@@ -157,9 +136,7 @@ function layoutDay(dayBlocks: PlannerBlock[]): Map<string, BlockLayout> {
   const layout = new Map<string, BlockLayout>();
   const sorted = [...dayBlocks].sort(
     (a, b) =>
-      a.start_minute - b.start_minute ||
-      b.end_minute - a.end_minute ||
-      a.id.localeCompare(b.id)
+      a.start_minute - b.start_minute || b.end_minute - a.end_minute || a.id.localeCompare(b.id)
   );
 
   // A cluster is a run of blocks chained together by overlap. Lane count is
@@ -206,18 +183,6 @@ const PRESETS: Record<ColorKind, readonly string[]> = {
   text: TEXT_PALETTE,
 };
 
-function toDayTagMap(rows: DayTag[]): DayTagMap {
-  const map: DayTagMap = {};
-  for (const row of rows) map[row.day] = row.tag;
-  return map;
-}
-
-/** Steps a day through remote -> office -> free -> no tag. */
-function nextDayTag(current: DayTagValue | undefined): DayTagValue | null {
-  const idx = DAY_TAG_CYCLE.indexOf(current ?? null);
-  return DAY_TAG_CYCLE[(idx + 1) % DAY_TAG_CYCLE.length];
-}
-
 export function formatTime(min: number): string {
   const clamped = ((min % MINUTES_PER_DAY) + MINUTES_PER_DAY) % MINUTES_PER_DAY;
   const h24 = Math.floor(clamped / 60);
@@ -227,25 +192,15 @@ export function formatTime(min: number): string {
   return m === 0 ? `${h12} ${ampm}` : `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-/** "Every day", "Mon – Fri" for a run, otherwise "Mon, Wed, Fri". */
-export function summarizeDays(days: number[]): string {
-  if (days.length === 0) return 'No days';
-  const sorted = [...days].sort((a, b) => a - b);
-  if (sorted.length === 7) return 'Every day';
-  const isRun = sorted.every((d, i) => i === 0 || d === sorted[i - 1] + 1);
-  if (isRun && sorted.length > 2) return `${DAYS[sorted[0]]} – ${DAYS[sorted[sorted.length - 1]]}`;
-  return sorted.map((d) => DAYS[d]).join(', ');
-}
-
 function formatHour(h: number): string {
   return formatTime(h * 60);
 }
 
 /**
- * The column today sits in. A tab left open overnight would otherwise keep
+ * Today's weekday, 0=Mon. A tab left open overnight would otherwise keep
  * highlighting yesterday, so it re-arms itself for each midnight.
  */
-function useTodayIndex(): number {
+function useWeekdayIndex(): number {
   const [today, setToday] = useState(() => dayIndexOf(new Date()));
 
   useEffect(() => {
@@ -320,22 +275,34 @@ function useElementHeight<T extends HTMLElement>(ref: React.RefObject<T | null>)
  * throws this state away and reloads rather than merging two weeks.
  */
 export function Planner({
-  plannerId,
+  planner,
   plannerStore,
   peopleStore,
 }: {
-  plannerId: string;
+  planner: PlannerRecord;
   plannerStore: PlannerStore;
   peopleStore: PeopleStore;
 }) {
   const { user, signOut } = useAuth();
   // Planner only renders behind the auth gate, so this is always set.
   const userId = user!.id;
-  const todayIndex = useTodayIndex();
+  const plannerId = planner.id;
+  const dayCount = planner.day_count;
+  const weekdayIndex = useWeekdayIndex();
   const nowMinutes = useNowMinutes();
 
+  // What each column is called, and whether "today" means anything here: a
+  // ten-day planner has no Monday to highlight.
+  const dayLabels = useMemo(() => dayLabelsFor(dayCount), [dayCount]);
+  const weeks = Math.ceil(dayCount / 7);
+  const todayIndex = isWeekBased(dayCount) && weekdayIndex < dayCount ? weekdayIndex : -1;
+
+  const dayTagStore = useDayTags(userId, plannerId);
+  // Which day's tag menu is open, so its header cell can outrank the cells
+  // beside it while the menu overhangs them.
+  const [openTagDay, setOpenTagDay] = useState<number | null>(null);
+
   const [blocks, setBlocks] = useState<PlannerBlock[]>([]);
-  const [dayTags, setDayTags] = useState<DayTagMap>({});
   const [recentColors, setRecentColors] = useState<Record<ColorKind, string[]>>({
     block: [],
     text: [],
@@ -411,17 +378,9 @@ export function Planner({
   }, [userId]);
 
   useEffect(() => {
-    const loadAll = async () => {
-      const tagRes = await supabase.from('day_tags').select('*').eq('planner_id', plannerId);
-      if (tagRes.error) {
-        console.error('Failed to load day tags', tagRes.error);
-        setDbError(describeDbError('load day tags', tagRes.error));
-      }
-      setDayTags(toDayTagMap(tagRes.data ?? []));
-      await Promise.all([fetchBlocks(), fetchRecentColors()]);
-    };
-    loadAll();
-  }, [fetchBlocks, fetchRecentColors, plannerId]);
+    // Day tags load themselves; these two are what the grid draws.
+    Promise.all([fetchBlocks(), fetchRecentColors()]);
+  }, [fetchBlocks, fetchRecentColors]);
 
   /** Records any colour the user typed in rather than picked from a preset. */
   const rememberColors = async (d: BlockDraft) => {
@@ -455,9 +414,9 @@ export function Planner({
     const el = gridRef.current;
     if (!el) return null;
     const rect = el.getBoundingClientRect();
-    const dayWidth = (rect.width - GUTTER_WIDTH) / DAYS.length;
+    const dayWidth = (rect.width - GUTTER_WIDTH) / dayCount;
     return {
-      day: clamp(Math.floor((clientX - rect.left - GUTTER_WIDTH) / dayWidth), 0, DAYS.length - 1),
+      day: clamp(Math.floor((clientX - rect.left - GUTTER_WIDTH) / dayWidth), 0, dayCount - 1),
       slot: clamp(
         Math.floor((clientY - rect.top - HEADER_HEIGHT) / SLOT_HEIGHT),
         0,
@@ -643,10 +602,7 @@ export function Planner({
   const clearWeek = async () => {
     setClearing(true);
     setDbError(null);
-    const { error } = await supabase
-      .from('planner_blocks')
-      .delete()
-      .eq('planner_id', plannerId);
+    const { error } = await supabase.from('planner_blocks').delete().eq('planner_id', plannerId);
     setClearing(false);
     if (error) {
       console.error('Failed to clear the week', error);
@@ -659,35 +615,6 @@ export function Planner({
     setConfirmingClear(false);
   };
 
-  const cycleDayTag = async (day: number) => {
-    const next = nextDayTag(dayTags[day]);
-    const previous = dayTags;
-
-    // Optimistic: the pill is a rapid toggle, so don't wait on the round trip.
-    setDayTags((prev) => {
-      const updated = { ...prev };
-      if (next) updated[day] = next;
-      else delete updated[day];
-      return updated;
-    });
-    setDbError(null);
-
-    const { error } = next
-      ? await supabase
-          .from('day_tags')
-          .upsert(
-            { user_id: userId, planner_id: plannerId, day, tag: next },
-            { onConflict: 'planner_id,day' }
-          )
-      : await supabase.from('day_tags').delete().eq('planner_id', plannerId).eq('day', day);
-
-    if (error) {
-      console.error('Failed to save day tag', error);
-      setDbError(describeDbError('save day tag', error));
-      setDayTags(previous);
-    }
-  };
-
   // --- Derived --------------------------------------------------------------
 
   const editingSeries = useMemo(
@@ -697,13 +624,13 @@ export function Planner({
 
   const layouts = useMemo(() => {
     const all = new Map<string, BlockLayout>();
-    for (let day = 0; day < DAYS.length; day++) {
+    for (let day = 0; day < dayCount; day++) {
       const dayBlocks = blocks.filter((b) => b.day_start === day);
       if (dayBlocks.length === 0) continue;
       for (const [id, entry] of layoutDay(dayBlocks)) all.set(id, entry);
     }
     return all;
-  }, [blocks]);
+  }, [blocks, dayCount]);
 
   const seriesSizes = useMemo(() => {
     const sizes = new Map<string, number>();
@@ -773,15 +700,18 @@ export function Planner({
 
       <main className="mx-auto max-w-7xl px-2 py-6 sm:px-6">
         {/* Whatever went wrong last, whether it was this week or the switcher. */}
-        {(dbError || plannerStore.error || peopleStore.error) && (
+        {(dbError || plannerStore.error || peopleStore.error || dayTagStore.error) && (
           <div className="mb-4 flex items-start gap-2 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
             <X className="mt-0.5 h-4 w-4 shrink-0" />
-            <span className="flex-1">{dbError ?? plannerStore.error ?? peopleStore.error}</span>
+            <span className="flex-1">
+              {dbError ?? plannerStore.error ?? peopleStore.error ?? dayTagStore.error}
+            </span>
             <button
               onClick={() => {
                 setDbError(null);
                 plannerStore.dismissError();
                 peopleStore.dismissError();
+                dayTagStore.dismissError();
               }}
               className="rounded p-0.5 text-red-500 transition-colors hover:bg-red-100 hover:text-red-700"
               aria-label="Dismiss error"
@@ -797,7 +727,17 @@ export function Planner({
           the header would never stick. The corner cells round themselves
           instead.
         */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
+        {/*
+          A long planner grows past the page rather than squeezing its columns
+          to nothing. The minimum width sits on the card so its border and
+          corners still wrap the whole grid, and the page — not this element —
+          does the sideways scrolling, which is what keeps the week header able
+          to stick under the app bar.
+        */}
+        <div
+          className="rounded-2xl border border-slate-200 bg-white shadow-sm"
+          style={{ minWidth: GUTTER_WIDTH + dayCount * MIN_DAY_COLUMN_WIDTH }}
+        >
           {/*
             touch-pan-y, not touch-none: the grid is ~1150px tall, so touch
             users must still be able to scroll the page vertically over it.
@@ -806,7 +746,7 @@ export function Planner({
             ref={gridRef}
             className="grid touch-pan-y select-none"
             style={{
-              gridTemplateColumns: `${GUTTER_WIDTH}px repeat(${DAYS.length}, 1fr)`,
+              gridTemplateColumns: `${GUTTER_WIDTH}px repeat(${dayCount}, minmax(0, 1fr))`,
               gridTemplateRows: `${HEADER_HEIGHT}px repeat(${SLOTS_PER_DAY}, ${SLOT_HEIGHT}px)`,
             }}
             onPointerDown={handlePointerDown}
@@ -821,31 +761,52 @@ export function Planner({
             <div
               data-header
               className="sticky rounded-tl-2xl border-b border-slate-200 bg-slate-50"
-              style={{ gridColumn: '1', gridRow: '1', top: appBarHeight, zIndex: 25 }}
+              style={{
+                gridColumn: '1',
+                gridRow: '1',
+                top: appBarHeight,
+                zIndex: 25,
+              }}
             />
-            {DAYS.map((day, idx) => {
+            {dayLabels.map((label, idx) => {
               const isToday = idx === todayIndex;
               return (
                 <div
-                  key={day}
+                  key={idx}
                   data-header
                   aria-current={isToday ? 'date' : undefined}
                   className={`sticky flex flex-col items-center justify-center gap-1 border-b border-l border-slate-200 ${
-                    idx === DAYS.length - 1 ? 'rounded-tr-2xl' : ''
+                    idx === dayCount - 1 ? 'rounded-tr-2xl' : ''
                   } ${isToday ? 'bg-blue-50' : 'bg-slate-50'}`}
-                  style={{ gridColumn: `${idx + 2}`, gridRow: '1', top: appBarHeight, zIndex: 25 }}
+                  style={{
+                    gridColumn: `${idx + 2}`,
+                    gridRow: '1',
+                    top: appBarHeight,
+                    zIndex: openTagDay === idx ? 26 : 25,
+                  }}
                 >
-                  <span
-                    title={isToday ? 'Today' : undefined}
-                    className={`text-xs font-semibold uppercase tracking-wider sm:text-sm ${
-                      isToday
-                        ? 'rounded-full bg-blue-600 px-2 py-0.5 text-white'
-                        : 'text-slate-600'
-                    }`}
-                  >
-                    {day}
+                  <span className="flex items-baseline gap-1">
+                    <span
+                      title={isToday ? `${label.full} · today` : label.full}
+                      className={`text-xs font-semibold uppercase tracking-wider sm:text-sm ${
+                        isToday
+                          ? 'rounded-full bg-blue-600 px-2 py-0.5 text-white'
+                          : 'text-slate-600'
+                      }`}
+                    >
+                      {label.short}
+                    </span>
+                    {/* Which week of a longer planner this column belongs to. */}
+                    {weeks > 1 && (
+                      <span className="text-[9px] font-semibold text-slate-400">W{label.week}</span>
+                    )}
                   </span>
-                  <DayTagPill tag={dayTags[idx]} onClick={() => cycleDayTag(idx)} />
+                  <DayTagMenu
+                    day={idx}
+                    dayLabel={label.full}
+                    store={dayTagStore}
+                    onOpenChange={(open) => setOpenTagDay(open ? idx : null)}
+                  />
                 </div>
               );
             })}
@@ -855,6 +816,7 @@ export function Planner({
               <HourRow
                 key={hour}
                 hour={hour}
+                dayCount={dayCount}
                 todayIndex={todayIndex}
                 isLastHour={idx === HOURS.length - 1}
               />
@@ -933,9 +895,7 @@ export function Planner({
                     className={`flex items-center gap-1 truncate font-semibold leading-tight ${
                       isCompact
                         ? `absolute left-1 top-1 z-10 rounded bg-inherit px-1 text-[10px] ${
-                            canOverflowLabel
-                              ? 'max-w-[calc(100%+160px)]'
-                              : 'max-w-[calc(100%-8px)]'
+                            canOverflowLabel ? 'max-w-[calc(100%+160px)]' : 'max-w-[calc(100%-8px)]'
                           }`
                         : 'text-xs sm:text-sm'
                     }`}
@@ -967,10 +927,9 @@ export function Planner({
           draft={activeDraft}
           recentColors={recentColors}
           peopleStore={peopleStore}
+          dayLabels={dayLabels}
           isEditing={editingSeries.length > 0}
-          onSave={(d) =>
-            editingSeriesId ? updateSeries(editingSeriesId, d) : saveDraft(d)
-          }
+          onSave={(d) => (editingSeriesId ? updateSeries(editingSeriesId, d) : saveDraft(d))}
           onDelete={() => {
             if (editingSeriesId) return deleteSeries(editingSeriesId);
           }}
@@ -1008,7 +967,7 @@ function ClearWeekButton({
       <button
         onClick={onAsk}
         disabled={blockCount === 0}
-        title={blockCount === 0 ? 'The week is already empty' : 'Delete every block'}
+        title={blockCount === 0 ? 'This planner is already empty' : 'Delete every block'}
         className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-transparent disabled:hover:text-slate-600"
       >
         <Trash2 className="h-3.5 w-3.5" />
@@ -1042,41 +1001,14 @@ function ClearWeekButton({
   );
 }
 
-function DayTagPill({ tag, onClick }: { tag?: DayTagValue; onClick: () => void }) {
-  const style = tag ? DAY_TAG_STYLES[tag] : null;
-  const Icon = tag ? DAY_TAG_ICONS[tag] : null;
-  const nextLabel = nextDayTag(tag);
-
-  return (
-    <button
-      onClick={onClick}
-      title={nextLabel ? `Set to ${DAY_TAG_STYLES[nextLabel].label}` : 'Remove tag'}
-      className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${
-        style
-          ? style.className
-          : 'border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600'
-      }`}
-    >
-      {tag && Icon ? (
-        <>
-          <Icon className="h-3 w-3" />
-          {style?.label}
-        </>
-      ) : (
-        <>
-          <Plus className="h-3 w-3" />
-          Tag
-        </>
-      )}
-    </button>
-  );
-}
-
 /**
  * Google-Calendar-style "right now" line: a red rule across today's column with
  * a dot on its left edge, plus the time itself in the gutter. It rides in the
  * grid cell holding the current slot and is nudged down by however far into
  * that quarter-hour the clock has run, so it lands on the exact minute.
+ *
+ * A planner whose days aren't weekdays has no column for today, so it gets the
+ * time in the gutter and no line — `dayIndex` is -1 in that case.
  */
 function NowMarker({ minute, dayIndex }: { minute: number; dayIndex: number }) {
   const slot = Math.floor(minute / SLOT_MINUTES);
@@ -1099,30 +1031,38 @@ function NowMarker({ minute, dayIndex }: { minute: number; dayIndex: number }) {
       </div>
 
       {/* The line itself, across today */}
-      <div
-        className="pointer-events-none relative"
-        style={{ gridColumn: `${dayIndex + 2}`, gridRow: `${slot + 2}`, zIndex: 22 }}
-      >
+      {dayIndex >= 0 && (
         <div
-          className="absolute inset-x-0 flex -translate-y-1/2 items-center"
-          style={{ top: offset }}
-          role="separator"
-          aria-label={`Current time, ${formatTime(minute)}`}
+          className="pointer-events-none relative"
+          style={{
+            gridColumn: `${dayIndex + 2}`,
+            gridRow: `${slot + 2}`,
+            zIndex: 22,
+          }}
         >
-          <span className="-ml-1 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 ring-2 ring-white" />
-          <span className="h-0.5 flex-1 bg-red-500" />
+          <div
+            className="absolute inset-x-0 flex -translate-y-1/2 items-center"
+            style={{ top: offset }}
+            role="separator"
+            aria-label={`Current time, ${formatTime(minute)}`}
+          >
+            <span className="-ml-1 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 ring-2 ring-white" />
+            <span className="h-0.5 flex-1 bg-red-500" />
+          </div>
         </div>
-      </div>
+      )}
     </>
   );
 }
 
 function HourRow({
   hour,
+  dayCount,
   todayIndex,
   isLastHour,
 }: {
   hour: number;
+  dayCount: number;
   todayIndex: number;
   isLastHour: boolean;
 }) {
@@ -1135,21 +1075,24 @@ function HourRow({
         className={`relative border-b border-slate-100 bg-slate-50/40 ${
           isLastHour ? 'rounded-bl-2xl' : ''
         }`}
-        style={{ gridColumn: '1', gridRow: `${baseSlot + 2} / ${baseSlot + 2 + slotsInHour}` }}
+        style={{
+          gridColumn: '1',
+          gridRow: `${baseSlot + 2} / ${baseSlot + 2 + slotsInHour}`,
+        }}
       >
         <span className="absolute -top-2.5 right-2 text-[10px] font-medium text-slate-400">
           {formatHour(hour)}
         </span>
       </div>
       {/* Slot cells */}
-      {DAYS.map((_, dayIdx) => (
+      {Array.from({ length: dayCount }, (_, dayIdx) => (
         <SlotCells
           key={dayIdx}
           dayIdx={dayIdx}
           baseSlot={baseSlot}
           slotsInHour={slotsInHour}
           isToday={dayIdx === todayIndex}
-          roundBottomRight={isLastHour && dayIdx === DAYS.length - 1}
+          roundBottomRight={isLastHour && dayIdx === dayCount - 1}
         />
       ))}
     </>
@@ -1184,9 +1127,7 @@ function SlotCells({
             } ${isToday ? 'bg-blue-50/50 hover:bg-blue-100/60' : 'hover:bg-slate-50/70'}`}
             style={{ gridColumn: `${dayIdx + 2}`, gridRow: `${slot + 2}` }}
           >
-            {!isHourBoundary && (
-              <div className="absolute left-0 top-0 h-px w-1.5 bg-slate-200" />
-            )}
+            {!isHourBoundary && <div className="absolute left-0 top-0 h-px w-1.5 bg-slate-200" />}
           </div>
         );
       })}

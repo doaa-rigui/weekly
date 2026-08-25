@@ -43,7 +43,7 @@ function Workspace({ userId }: { userId: string }) {
   return (
     <Planner
       key={store.active.id}
-      plannerId={store.active.id}
+      planner={store.active}
       plannerStore={store}
       peopleStore={people}
     />

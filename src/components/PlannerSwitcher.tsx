@@ -1,6 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown, Copy, Pencil, Plus, Trash2, X } from 'lucide-react';
 import { PLANNER_NAME_MAX, type PlannerStore } from '@/lib/planners';
+import {
+  DEFAULT_PLANNER_DAYS,
+  MAX_PLANNER_DAYS,
+  MIN_PLANNER_DAYS,
+  PLANNER_LENGTH_PRESETS,
+  isWeekBased,
+} from '@/lib/constants';
 import type { PlannerRecord } from '@/lib/supabase';
 
 /**
@@ -8,6 +15,15 @@ import type { PlannerRecord } from '@/lib/supabase';
  * happen in place, so at most one row can be busy at a time.
  */
 type RowMode = { kind: 'renaming'; id: string } | { kind: 'deleting'; id: string } | null;
+
+/** "2 weeks" reads better than "14 days" when the length divides evenly. */
+function describeLength(dayCount: number): string {
+  if (dayCount % 7 === 0) {
+    const weeks = dayCount / 7;
+    return weeks === 1 ? '1 week' : `${weeks} weeks`;
+  }
+  return dayCount === 1 ? '1 day' : `${dayCount} days`;
+}
 
 /**
  * The planner list hangs off the app-bar title rather than a sidebar or a tab
@@ -117,7 +133,11 @@ export function PlannerSwitcher({ store }: { store: PlannerStore }) {
  * an action on the account, not a way of choosing between planners, and it is
  * the one thing you may want when no menu is open.
  */
-export function NewPlannerButton({ onCreate }: { onCreate: (name: string) => void }) {
+export function NewPlannerButton({
+  onCreate,
+}: {
+  onCreate: (name: string, dayCount: number) => void;
+}) {
   const [naming, setNaming] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -151,20 +171,151 @@ export function NewPlannerButton({ onCreate }: { onCreate: (name: string) => voi
       {naming && (
         // Right-aligned: the button sits in the right-hand action group, so a
         // left-aligned panel would hang off the edge of the window.
-        <div className="absolute right-0 top-full z-40 mt-2 w-64 rounded-xl border border-slate-200 bg-white p-1.5 shadow-lg">
-          <p className="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
-            Name your planner
-          </p>
-          <NameInput
-            placeholder="Chores planner"
-            onSubmit={(name) => {
-              onCreate(name);
+        <div className="absolute right-0 top-full z-40 mt-2 w-72 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+          <NewPlannerForm
+            onSubmit={(name, dayCount) => {
+              onCreate(name, dayCount);
               close();
             }}
             onCancel={close}
           />
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Name and length, together: how many days a planner runs can't be changed
+ * afterwards without deciding what happens to the blocks on the days that go
+ * away, so it is asked for up front.
+ */
+function NewPlannerForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (name: string, dayCount: number) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [dayCount, setDayCount] = useState<number>(DEFAULT_PLANNER_DAYS);
+  // A preset covers the common cases; the field is for everything else.
+  const [custom, setCustom] = useState(false);
+
+  const valid = dayCount >= MIN_PLANNER_DAYS && dayCount <= MAX_PLANNER_DAYS;
+
+  const submit = () => {
+    if (!valid) return;
+    onSubmit(name.trim() || 'New planner', dayCount);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Name
+        </label>
+        <input
+          autoFocus
+          value={name}
+          maxLength={PLANNER_NAME_MAX}
+          placeholder="Chores planner"
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              submit();
+            }
+            // The panel's own listener closes on Escape; nothing to stop here.
+          }}
+          className="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-900"
+        />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+          Length
+        </label>
+        <div className="flex gap-1.5">
+          {PLANNER_LENGTH_PRESETS.map((preset) => {
+            const active = !custom && dayCount === preset.days;
+            return (
+              <button
+                key={preset.days}
+                onClick={() => {
+                  setCustom(false);
+                  setDayCount(preset.days);
+                }}
+                aria-pressed={active}
+                className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors ${
+                  active
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+              >
+                {preset.label}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setCustom(true)}
+            aria-pressed={custom}
+            className={`flex-1 rounded-lg border px-2 py-1.5 text-xs font-semibold transition-colors ${
+              custom
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50'
+            }`}
+          >
+            Custom
+          </button>
+        </div>
+
+        {custom && (
+          <div className="mt-2 flex items-center gap-2">
+            <input
+              type="number"
+              autoFocus
+              min={MIN_PLANNER_DAYS}
+              max={MAX_PLANNER_DAYS}
+              value={dayCount}
+              onChange={(e) => setDayCount(Number(e.target.value))}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              className="w-20 rounded-lg border border-slate-300 px-2.5 py-1.5 text-sm text-slate-900 outline-none focus:border-slate-900"
+            />
+            <span className="text-xs text-slate-500">
+              days ({MIN_PLANNER_DAYS}–{MAX_PLANNER_DAYS})
+            </span>
+          </div>
+        )}
+
+        {/* Weekday names only fit a planner whose length lines up with a week. */}
+        <p className="mt-1.5 text-[11px] leading-snug text-slate-400">
+          {isWeekBased(dayCount) && valid
+            ? 'Columns are named after the weekdays, starting Monday.'
+            : 'Columns are numbered Day 1 onwards.'}
+        </p>
+      </div>
+
+      <div className="flex items-center justify-end gap-1.5">
+        <button
+          onClick={onCancel}
+          className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={submit}
+          disabled={!valid}
+          className="rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Create planner
+        </button>
+      </div>
     </div>
   );
 }
@@ -289,6 +440,12 @@ function PlannerRow({
         >
           {planner.name}
         </span>
+        {/* Only worth saying when it isn't the plain week everything defaults to. */}
+        {planner.day_count !== DEFAULT_PLANNER_DAYS && (
+          <span className="shrink-0 text-[10px] font-medium text-slate-400">
+            {describeLength(planner.day_count)}
+          </span>
+        )}
       </button>
 
       {/*
@@ -300,9 +457,7 @@ function PlannerRow({
         <RowAction label={`Rename ${planner.name}`} onClick={onStartRename} icon={Pencil} />
         <RowAction label={`Duplicate ${planner.name}`} onClick={onDuplicate} icon={Copy} />
         <RowAction
-          label={
-            isOnlyPlanner ? 'Your last planner cannot be deleted' : `Delete ${planner.name}`
-          }
+          label={isOnlyPlanner ? 'Your last planner cannot be deleted' : `Delete ${planner.name}`}
           onClick={onStartDelete}
           icon={Trash2}
           disabled={isOnlyPlanner}
