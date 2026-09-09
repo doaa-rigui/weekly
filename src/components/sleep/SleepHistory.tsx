@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { MoonStar, Pencil, Trash2 } from 'lucide-react';
+import { ListChecks, MoonStar, Pencil, Trash2 } from 'lucide-react';
 import {
   describeNightAge,
   describePeriod,
@@ -37,12 +37,15 @@ function periodIdsOf(night: Night): string[] {
  */
 function NightGroup({
   night,
+  selecting,
   selected,
   onTogglePeriod,
   onEdit,
   onDeleteOne,
 }: {
   night: Night;
+  /** Show the tick boxes instead of the per-row edit and delete buttons. */
+  selecting: boolean;
   selected: Set<string>;
   onTogglePeriod: (id: string, checked: boolean) => void;
   onEdit: (row: SleepPeriod) => void;
@@ -93,13 +96,15 @@ function NightGroup({
               )}
 
               <div className="group flex items-start gap-3 px-4 py-2.5">
-                <span className="pt-0.5">
-                  <Checkbox
-                    checked={selected.has(period.row.id)}
-                    onChange={(checked) => onTogglePeriod(period.row.id, checked)}
-                    label={`Select sleep from ${formatTime(period.start)}`}
-                  />
-                </span>
+                {selecting && (
+                  <span className="pt-0.5">
+                    <Checkbox
+                      checked={selected.has(period.row.id)}
+                      onChange={(checked) => onTogglePeriod(period.row.id, checked)}
+                      label={`Select sleep from ${formatTime(period.start)}`}
+                    />
+                  </span>
+                )}
 
                 <span
                   className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
@@ -131,8 +136,10 @@ function NightGroup({
                 </div>
 
                 {/* Revealed on hover on a pointer device, always visible on a
-                    touch one — there is no hover to reveal them with. */}
-                <div className="flex shrink-0 items-center gap-0.5">
+                    touch one — there is no hover to reveal them with. Hidden
+                    while selecting, where the whole row is a tick target and
+                    acting on one entry is not what the mode is for. */}
+                <div className={`flex shrink-0 items-center gap-0.5 ${selecting ? 'hidden' : ''}`}>
                   <button
                     onClick={() => onEdit(period.row)}
                     title="Edit this entry"
@@ -175,6 +182,13 @@ export function SleepHistory({
   onEdit: (row: SleepPeriod) => void;
   onAdd: () => void;
 }) {
+  /**
+   * Whether the tick boxes are showing. Off by default: reading the history is
+   * the common case and deleting several entries at once is the rare one, so
+   * the checkboxes stay out of the way until they are asked for. A single
+   * entry never needs them — its own row has a bin.
+   */
+  const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   /**
    * What the confirmation is about: a specific id from a row's own bin, or the
@@ -185,6 +199,18 @@ export function SleepHistory({
   const [pending, setPending] = useState<string[] | null>(null);
 
   const allIds = useMemo(() => nights.flatMap(periodIdsOf), [nights]);
+
+  // Entering and leaving both start from nothing selected, so a cancelled
+  // selection can't come back the next time the mode is opened.
+  const startSelecting = useCallback(() => {
+    setSelected(new Set());
+    setSelecting(true);
+  }, []);
+
+  const stopSelecting = useCallback(() => {
+    setSelected(new Set());
+    setSelecting(false);
+  }, []);
 
   const togglePeriod = useCallback((id: string, checked: boolean) => {
     setSelected((prev) => {
@@ -203,10 +229,10 @@ export function SleepHistory({
   const confirmDelete = async () => {
     if (!pending) return;
     if (await onDelete(pending)) {
-      // Only the deleted ids are dropped: a failed delete keeps the selection
-      // so it can be retried without re-ticking thirty boxes.
-      const gone = new Set(pending);
-      setSelected((prev) => new Set([...prev].filter((id) => !gone.has(id))));
+      // Deleting is the end of a selection, so the mode closes with it. A
+      // failed delete keeps both the mode and the selection, so it can be
+      // retried without re-ticking thirty boxes.
+      stopSelecting();
     }
     setPending(null);
   };
@@ -237,39 +263,57 @@ export function SleepHistory({
     <>
       <Card>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-night-700/70 px-4 py-3">
-          <label className="flex cursor-pointer items-center gap-2.5">
-            <Checkbox
-              checked={count === allIds.length && allIds.length > 0}
-              indeterminate={count > 0}
-              onChange={toggleAll}
-              label="Select all entries"
-            />
-            <span className="text-xs font-medium text-night-300">Select all</span>
-          </label>
+          {selecting ? (
+            <>
+              <label className="flex cursor-pointer items-center gap-2.5">
+                <Checkbox
+                  checked={count === allIds.length && allIds.length > 0}
+                  indeterminate={count > 0}
+                  onChange={toggleAll}
+                  label="Select all entries"
+                />
+                <span className="text-xs font-medium text-night-300">Select all</span>
+              </label>
 
-          <span className="text-xs text-night-500">
-            {entryCount} {entryCount === 1 ? 'entry' : 'entries'} across {nights.length}{' '}
-            {nights.length === 1 ? 'night' : 'nights'}
-          </span>
+              <span className="text-xs text-night-500">
+                {count} of {entryCount} selected
+              </span>
 
-          {/* The destructive control only exists once there is something to
-              destroy, so it can't be hit by reflex on an empty selection. */}
-          {count > 0 && (
-            <div className="ml-auto flex items-center gap-2">
+              <div className="ml-auto flex items-center gap-2">
+                <button
+                  onClick={stopSelecting}
+                  className="text-xs font-medium text-night-400 transition-colors hover:text-night-200"
+                >
+                  Cancel
+                </button>
+                {/* The destructive control only exists once there is something
+                    to destroy, so it can't be hit on an empty selection. */}
+                {count > 0 && (
+                  <button
+                    onClick={() => setPending([...selected])}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/25"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete {count}
+                  </button>
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              <span className="text-xs text-night-500">
+                {entryCount} {entryCount === 1 ? 'entry' : 'entries'} across {nights.length}{' '}
+                {nights.length === 1 ? 'night' : 'nights'}
+              </span>
+
               <button
-                onClick={() => setSelected(new Set())}
-                className="text-xs font-medium text-night-400 transition-colors hover:text-night-200"
+                onClick={startSelecting}
+                className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-night-600 px-3 py-1.5 text-xs font-medium text-night-300 transition-colors hover:bg-night-700 hover:text-night-100"
               >
-                Clear
+                <ListChecks className="h-3.5 w-3.5" />
+                Select
               </button>
-              <button
-                onClick={() => setPending([...selected])}
-                className="inline-flex items-center gap-1.5 rounded-full bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-300 transition-colors hover:bg-rose-500/25"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-                Delete {count}
-              </button>
-            </div>
+            </>
           )}
         </div>
 
@@ -278,6 +322,7 @@ export function SleepHistory({
             <NightGroup
               key={night.key}
               night={night}
+              selecting={selecting}
               selected={selected}
               onTogglePeriod={togglePeriod}
               onEdit={onEdit}
