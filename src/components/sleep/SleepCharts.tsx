@@ -146,6 +146,14 @@ function TimelineChart({
 }) {
   const win = useMemo(() => clockWindowOf(slots), [slots]);
 
+  /**
+   * Newest night at the top. `slots` arrives oldest-first, which is right for
+   * the three views that run time along the x axis, but this one is a vertical
+   * list — and a list is read from the top, where the night you just logged
+   * should be. Only the row order flips; the clock axis is untouched.
+   */
+  const rows = useMemo(() => [...slots].reverse(), [slots]);
+
   const labelW = width < 520 ? 30 : 62;
   const padRight = 10;
   const plotW = Math.max(80, width - labelW - padRight);
@@ -187,7 +195,7 @@ function TimelineChart({
         );
       })}
 
-      {slots.map((slot, i) => {
+      {rows.map((slot, i) => {
         const top = AXIS_HEIGHT + i * ROW_HEIGHT;
         const barY = top + (ROW_HEIGHT - BAR_HEIGHT) / 2;
         const active = slot.key === activeKey;
