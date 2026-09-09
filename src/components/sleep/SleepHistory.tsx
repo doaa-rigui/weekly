@@ -21,38 +21,36 @@ import { Card, Checkbox, Chip, ConfirmDialog, Empty } from './ui';
  * and the awake gaps drawn between them.
  */
 
-/** A night's own periods, for the group-level checkbox. */
+/** A night's own period ids, which is what selection and deletion work on. */
 function periodIdsOf(night: Night): string[] {
   return night.periods.map((p) => p.row.id);
 }
 
+/**
+ * A night heading with its periods under it.
+ *
+ * The heading deliberately has no checkbox of its own. Deletion works on
+ * periods — a night is a derived grouping, not a row — so a tick on the
+ * heading would either be a second control for the same single entry, or a
+ * parent of the ones below it drawn at the same indentation as its children.
+ * Selecting a whole night is ticking its periods; "Select all" covers the rest.
+ */
 function NightGroup({
   night,
   selected,
-  onToggleNight,
   onTogglePeriod,
   onEdit,
   onDeleteOne,
 }: {
   night: Night;
   selected: Set<string>;
-  onToggleNight: (night: Night, checked: boolean) => void;
   onTogglePeriod: (id: string, checked: boolean) => void;
   onEdit: (row: SleepPeriod) => void;
   onDeleteOne: (id: string) => void;
 }) {
-  const ids = periodIdsOf(night);
-  const chosen = ids.filter((id) => selected.has(id)).length;
-
   return (
     <li className="border-b border-night-700/50 last:border-b-0">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-night-900/40 px-4 py-2.5">
-        <Checkbox
-          checked={chosen === ids.length}
-          indeterminate={chosen > 0}
-          onChange={(checked) => onToggleNight(night, checked)}
-          label={`Select the night of ${formatNightRange(night)}`}
-        />
         <div className="min-w-0 flex-1">
           {/* Allowed to wrap rather than truncate: a night is named by both of
               its dates, and dropping the second is what this page is for. */}
@@ -197,17 +195,6 @@ export function SleepHistory({
     });
   }, []);
 
-  const toggleNight = useCallback((night: Night, checked: boolean) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      for (const id of periodIdsOf(night)) {
-        if (checked) next.add(id);
-        else next.delete(id);
-      }
-      return next;
-    });
-  }, []);
-
   const toggleAll = useCallback(
     (checked: boolean) => setSelected(checked ? new Set(allIds) : new Set()),
     [allIds]
@@ -292,7 +279,6 @@ export function SleepHistory({
               key={night.key}
               night={night}
               selected={selected}
-              onToggleNight={toggleNight}
               onTogglePeriod={togglePeriod}
               onEdit={onEdit}
               onDeleteOne={(id) => setPending([id])}
