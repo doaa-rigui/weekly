@@ -9,8 +9,10 @@ import {
   type SleepSummary,
 } from '@/lib/sleep';
 import { NightStrip, SleepChartCard } from './SleepCharts';
+import { TakeawaysPreview } from './SleepTakeaways';
 import { Card, Chip, Empty, Stat } from './ui';
 import type { SleepPrefill } from './SleepForm';
+import type { SleepTakeaway } from '@/lib/takeaways';
 
 /**
  * Everything worth knowing at a glance, in the order it is wanted: what last
@@ -149,11 +151,15 @@ function LastNightCard({
 export function SleepDashboard({
   summary,
   slots,
+  takeaways,
+  onOpenTakeaways,
   onAdd,
 }: {
   summary: SleepSummary;
   /** The 30-night window, oldest first, holes included. */
   slots: NightSlot[];
+  takeaways: SleepTakeaway[];
+  onOpenTakeaways: () => void;
   onAdd: (prefill?: SleepPrefill) => void;
 }) {
   const { latest, consistency } = summary;
@@ -235,6 +241,8 @@ export function SleepDashboard({
         average={summary.monthAverage}
         consistency={consistency}
       />
+
+      <TakeawaysPreview takeaways={takeaways} onOpen={onOpenTakeaways} />
     </div>
   );
 }

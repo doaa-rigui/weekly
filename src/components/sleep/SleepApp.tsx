@@ -3,17 +3,19 @@ import { CalendarDays, Loader2, LogOut, MoonStar, Plus, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useView } from '@/lib/view';
 import { useSleep } from '@/lib/sleepStore';
+import { useTakeaways } from '@/lib/takeaways';
 import { nightSlots, type SleepPeriod } from '@/lib/sleep';
 import { SleepDashboard } from './SleepDashboard';
 import { SleepForm, type SleepPrefill } from './SleepForm';
 import { SleepHistory } from './SleepHistory';
+import { SleepTakeaways } from './SleepTakeaways';
 import { Segmented } from './ui';
 
 /**
- * The sleep tracker's shell: the header, the two pages, and the add-sleep
+ * The sleep tracker's shell: the header, the three pages, and the add-sleep
  * panel. It owns nothing but which page is showing and whether the form is
- * open — everything about sleep itself lives in `useSleep`, so the dashboard
- * and the history page can never disagree about a night.
+ * open — the nightly log lives in `useSleep` and the standing lessons in
+ * `useTakeaways`, so no two pages can disagree about either.
  *
  * The dark palette is deliberate and confined to this half of the app. The
  * planner is a daytime tool and stays light; a sleep log is read last thing at
@@ -23,6 +25,7 @@ import { Segmented } from './ui';
 const PAGES = [
   { value: 'dashboard', label: 'Dashboard' },
   { value: 'history', label: 'History' },
+  { value: 'takeaways', label: 'Takeaways' },
 ] as const;
 
 type Page = (typeof PAGES)[number]['value'];
@@ -31,6 +34,7 @@ export function SleepApp({ userId }: { userId: string }) {
   const { user, signOut } = useAuth();
   const { setView } = useView();
   const store = useSleep(userId);
+  const takeaways = useTakeaways(userId);
 
   const [page, setPage] = useState<Page>('dashboard');
   /**
@@ -44,6 +48,18 @@ export function SleepApp({ userId }: { userId: string }) {
   } | null>(null);
 
   const slots = useMemo(() => nightSlots(store.nights), [store.nights]);
+
+  /**
+   * Each page waits only on what it actually shows. The dashboard needs both,
+   * since it previews the takeaways and would otherwise flash its "nothing
+   * here yet" prompt before they arrive.
+   */
+  const loading =
+    page === 'history'
+      ? store.loading
+      : page === 'takeaways'
+        ? takeaways.loading
+        : store.loading || takeaways.loading;
 
   return (
     <div className="min-h-screen bg-night-900 bg-night-glow bg-no-repeat">
@@ -94,23 +110,27 @@ export function SleepApp({ userId }: { userId: string }) {
       <main className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
         <div className="mb-4 flex items-center justify-between gap-3">
           <Segmented options={PAGES} value={page} onChange={setPage} label="Sleep pages" />
-          {store.periods.length > 0 && (
+          {page !== 'takeaways' && store.periods.length > 0 && (
             <span className="text-xs text-night-500">
               {store.periods.length} {store.periods.length === 1 ? 'entry' : 'entries'}
             </span>
           )}
         </div>
 
-        {store.error && (
+        {(store.error ?? takeaways.error) && (
           <div className="mb-4 flex items-start gap-2 rounded-xl bg-rose-500/10 px-4 py-3 text-sm font-medium text-rose-300">
-            <span className="flex-1">{store.error}</span>
-            <button onClick={store.dismissError} aria-label="Dismiss" className="shrink-0">
+            <span className="flex-1">{store.error ?? takeaways.error}</span>
+            <button
+              onClick={store.error ? store.dismissError : takeaways.dismissError}
+              aria-label="Dismiss"
+              className="shrink-0"
+            >
               <X className="mt-0.5 h-4 w-4" />
             </button>
           </div>
         )}
 
-        {store.loading ? (
+        {loading ? (
           <div className="flex justify-center py-24">
             <Loader2 className="h-6 w-6 animate-spin text-night-500" />
           </div>
@@ -118,8 +138,12 @@ export function SleepApp({ userId }: { userId: string }) {
           <SleepDashboard
             summary={store.summary}
             slots={slots}
+            takeaways={takeaways.takeaways}
+            onOpenTakeaways={() => setPage('takeaways')}
             onAdd={(prefill) => setForm({ prefill })}
           />
+        ) : page === 'takeaways' ? (
+          <SleepTakeaways store={takeaways} />
         ) : (
           <SleepHistory
             nights={store.nights}

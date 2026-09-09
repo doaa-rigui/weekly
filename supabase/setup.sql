@@ -147,7 +147,27 @@ CREATE TABLE IF NOT EXISTS sleep_periods (
 CREATE INDEX IF NOT EXISTS sleep_periods_user_id_started_at_idx
   ON sleep_periods (user_id, started_at DESC);
 
--- 7. Security ---------------------------------------------------------------
+-- 7. Sleep takeaways --------------------------------------------------------
+-- What you have learned about your own sleep, kept apart from the nightly log:
+-- a note on a sleep period belongs to one night, a takeaway is a standing
+-- lesson that outlives every entry.
+
+CREATE TABLE IF NOT EXISTS sleep_takeaways (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  text text NOT NULL,
+  -- Whether the thing helps or hurts, so the list can be scanned by colour.
+  effect text NOT NULL DEFAULT 'neutral',
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT sleep_takeaways_text_not_blank CHECK (length(btrim(text)) > 0),
+  CONSTRAINT sleep_takeaways_effect_known CHECK (effect IN ('helps', 'hurts', 'neutral'))
+);
+
+-- The list is one account's takeaways, newest first.
+CREATE INDEX IF NOT EXISTS sleep_takeaways_user_id_created_at_idx
+  ON sleep_takeaways (user_id, created_at DESC);
+
+-- 8. Security ---------------------------------------------------------------
 -- Signed in, and only your own rows. The anon role gets nothing.
 
 ALTER TABLE planners       ENABLE ROW LEVEL SECURITY;
@@ -157,6 +177,7 @@ ALTER TABLE day_tags       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE day_tag_options ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recent_colors  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sleep_periods  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sleep_takeaways ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "own_planners_select" ON planners;
 CREATE POLICY "own_planners_select" ON planners FOR SELECT
@@ -268,4 +289,20 @@ CREATE POLICY "own_sleep_update" ON sleep_periods FOR UPDATE
 
 DROP POLICY IF EXISTS "own_sleep_delete" ON sleep_periods;
 CREATE POLICY "own_sleep_delete" ON sleep_periods FOR DELETE
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_takeaways_select" ON sleep_takeaways;
+CREATE POLICY "own_takeaways_select" ON sleep_takeaways FOR SELECT
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_takeaways_insert" ON sleep_takeaways;
+CREATE POLICY "own_takeaways_insert" ON sleep_takeaways FOR INSERT
+  TO authenticated WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_takeaways_update" ON sleep_takeaways;
+CREATE POLICY "own_takeaways_update" ON sleep_takeaways FOR UPDATE
+  TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_takeaways_delete" ON sleep_takeaways;
+CREATE POLICY "own_takeaways_delete" ON sleep_takeaways FOR DELETE
   TO authenticated USING (user_id = auth.uid());
