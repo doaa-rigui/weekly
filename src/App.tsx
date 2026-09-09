@@ -1,6 +1,8 @@
 import { Planner } from '@/components/Planner';
 import { SignIn } from '@/components/SignIn';
+import { SleepApp } from '@/components/sleep/SleepApp';
 import { AuthProvider, useAuth } from '@/lib/auth';
+import { ViewProvider, useView } from '@/lib/view';
 import { usePeople } from '@/lib/people';
 import { usePlanners } from '@/lib/planners';
 import { Loader2 } from 'lucide-react';
@@ -52,19 +54,25 @@ function Workspace({ userId }: { userId: string }) {
 
 function Gate() {
   const { user, loading } = useAuth();
+  const { view } = useView();
 
   if (loading) return <Spinner />;
   if (!user) return <SignIn />;
 
+  // Two apps behind one sign-in: the planner and the sleep tracker share an
+  // account and nothing else, so this is a switch rather than a route.
   // Keyed by user so switching accounts remounts with a clean slate rather
-  // than showing the previous account's planners until the refetch lands.
+  // than showing the previous account's data until the refetch lands.
+  if (view === 'sleep') return <SleepApp key={user.id} userId={user.id} />;
   return <Workspace key={user.id} userId={user.id} />;
 }
 
 function App() {
   return (
     <AuthProvider>
-      <Gate />
+      <ViewProvider>
+        <Gate />
+      </ViewProvider>
     </AuthProvider>
   );
 }

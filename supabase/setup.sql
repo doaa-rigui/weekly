@@ -126,7 +126,28 @@ ALTER TABLE recent_colors
 CREATE INDEX IF NOT EXISTS recent_colors_kind_used_at_idx
   ON recent_colors (user_id, kind, used_at DESC);
 
--- 6. Security ---------------------------------------------------------------
+-- 6. Sleep periods ----------------------------------------------------------
+-- The sleep tracker, which stands apart from the planners: one row is one
+-- continuous stretch of sleep. A *night* is a group of these rows and is
+-- derived, not stored, so waking for Fajr and going back to sleep reads as two
+-- periods of one night (see src/lib/sleep.ts).
+
+CREATE TABLE IF NOT EXISTS sleep_periods (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  started_at timestamptz NOT NULL,
+  ended_at timestamptz NOT NULL,
+  note text,
+  created_at timestamptz DEFAULT now(),
+  -- A period with no duration, or a negative one, has nothing to visualise.
+  CONSTRAINT sleep_periods_ends_after_start CHECK (ended_at > started_at)
+);
+
+-- Every read is "one account's periods, newest first, since a cutoff".
+CREATE INDEX IF NOT EXISTS sleep_periods_user_id_started_at_idx
+  ON sleep_periods (user_id, started_at DESC);
+
+-- 7. Security ---------------------------------------------------------------
 -- Signed in, and only your own rows. The anon role gets nothing.
 
 ALTER TABLE planners       ENABLE ROW LEVEL SECURITY;
@@ -135,6 +156,7 @@ ALTER TABLE planner_blocks ENABLE ROW LEVEL SECURITY;
 ALTER TABLE day_tags       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE day_tag_options ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recent_colors  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sleep_periods  ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "own_planners_select" ON planners;
 CREATE POLICY "own_planners_select" ON planners FOR SELECT
@@ -230,4 +252,20 @@ CREATE POLICY "own_recent_colors_update" ON recent_colors FOR UPDATE
 
 DROP POLICY IF EXISTS "own_recent_colors_delete" ON recent_colors;
 CREATE POLICY "own_recent_colors_delete" ON recent_colors FOR DELETE
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_sleep_select" ON sleep_periods;
+CREATE POLICY "own_sleep_select" ON sleep_periods FOR SELECT
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_sleep_insert" ON sleep_periods;
+CREATE POLICY "own_sleep_insert" ON sleep_periods FOR INSERT
+  TO authenticated WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_sleep_update" ON sleep_periods;
+CREATE POLICY "own_sleep_update" ON sleep_periods FOR UPDATE
+  TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_sleep_delete" ON sleep_periods;
+CREATE POLICY "own_sleep_delete" ON sleep_periods FOR DELETE
   TO authenticated USING (user_id = auth.uid());

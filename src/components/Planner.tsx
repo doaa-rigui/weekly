@@ -37,7 +37,8 @@ import { DayTagMenu } from './DayTagMenu';
 import { EditPanel } from './EditPanel';
 import { PeopleAvatars } from './People';
 import { NewPlannerButton, PlannerSwitcher } from './PlannerSwitcher';
-import { CalendarDays, Loader2, LogOut, Plus, Repeat, Trash2, X } from 'lucide-react';
+import { useView } from '@/lib/view';
+import { CalendarDays, Loader2, LogOut, MoonStar, Plus, Repeat, Trash2, X } from 'lucide-react';
 
 /** A drag in progress: an anchor cell plus wherever the pointer is now. */
 type Selection = {
@@ -284,6 +285,7 @@ export function Planner({
   peopleStore: PeopleStore;
 }) {
   const { user, signOut } = useAuth();
+  const { setView } = useView();
   // Planner only renders behind the auth gate, so this is always set.
   const userId = user!.id;
   const plannerId = planner.id;
@@ -683,6 +685,16 @@ export function Planner({
               onCancel={() => setConfirmingClear(false)}
               onConfirm={clearWeek}
             />
+            {/* Into the other half of the app. Nothing is carried across —
+                the sleep tracker shares the account and nothing else. */}
+            <button
+              onClick={() => setView('sleep')}
+              title="Open the sleep tracker"
+              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+            >
+              <MoonStar className="h-3.5 w-3.5" />
+              Sleep
+            </button>
             <span className="hidden max-w-[16ch] truncate text-xs text-slate-400 xl:inline">
               {user?.email}
             </span>
