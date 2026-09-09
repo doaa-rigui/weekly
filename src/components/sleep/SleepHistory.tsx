@@ -1,11 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { ListChecks, MoonStar, Pencil, Trash2 } from 'lucide-react';
 import {
-  describeNightAge,
+  describeNightRecency,
   describePeriod,
   formatDuration,
-  formatNightRange,
+  formatNightRangeCompact,
   formatTime,
+  formatWeekdayShort,
   type Night,
   type SleepPeriod,
 } from '@/lib/sleep';
@@ -27,7 +28,33 @@ function periodIdsOf(night: Night): string[] {
 }
 
 /**
- * A night heading with its periods under it.
+ * The scannable anchor for a night: weekday over day-of-month, like a page
+ * torn off a calendar. It carries the evening date — the one the night is
+ * filed under — so running an eye down the left edge finds a day without
+ * reading any of the times.
+ */
+function DateBadge({ night }: { night: Night }) {
+  return (
+    <div className="flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-xl border border-night-700 bg-night-900/60">
+      <span className="text-[10px] font-medium uppercase leading-none tracking-wide text-dream-400">
+        {formatWeekdayShort(night.date)}
+      </span>
+      <span className="mt-0.5 text-sm font-semibold leading-none tabular-nums text-night-100">
+        {night.date.getDate()}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * One night as its own card.
+ *
+ * The previous layout ran every night and every period together as rows of one
+ * list at the same weight, which made a day hard to find and a one-period night
+ * print its duration twice — once as the night's total and again on its only
+ * row. So: a card per night with air between them, one prominent total in the
+ * header, and per-period durations and labels only when the night was actually
+ * broken and they say something the header doesn't.
  *
  * The heading deliberately has no checkbox of its own. Deletion works on
  * periods — a night is a derived grouping, not a row — so a tick on the
@@ -51,53 +78,73 @@ function NightGroup({
   onEdit: (row: SleepPeriod) => void;
   onDeleteOne: (id: string) => void;
 }) {
+  const recency = describeNightRecency(night);
+  const range = formatNightRangeCompact(night);
+
   return (
-    <li className="border-b border-night-700/50 last:border-b-0">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 bg-night-900/40 px-4 py-2.5">
+    <li className="overflow-hidden rounded-2xl border border-night-700/70 bg-night-850/70">
+      <div className="flex items-center gap-3 px-3.5 py-3">
+        <DateBadge night={night} />
+
+        {/* The range is always shown, since a night belongs to two dates and
+            naming one of them is how you end up reading the wrong card. It
+            leads when there is no recency phrase left to lead with — repeating
+            the date under itself would say nothing. */}
         <div className="min-w-0 flex-1">
-          {/* Allowed to wrap rather than truncate: a night is named by both of
-              its dates, and dropping the second is what this page is for. */}
-          <p className="text-sm font-semibold text-night-100">{formatNightRange(night)}</p>
-          <p className="text-xs text-night-400">{describeNightAge(night)}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-1.5">
-          {night.hasFajr && <Chip tone="dawn">Fajr</Chip>}
-          {night.fragmented && (
-            <Chip tone="neutral">
-              {night.periods.length} periods
-            </Chip>
+          {recency ? (
+            <>
+              <p className="truncate text-sm font-semibold text-night-100">{recency}</p>
+              <p className="truncate text-xs text-night-400">{range}</p>
+            </>
+          ) : (
+            <p className="truncate text-sm font-semibold text-night-100">{range}</p>
           )}
-          <span className="text-sm font-semibold tabular-nums text-dream-300">
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2">
+          {night.hasFajr && <Chip tone="dawn">Fajr</Chip>}
+          <span className="text-lg font-semibold tabular-nums text-dream-300">
             {formatDuration(night.totalMinutes)}
           </span>
         </div>
       </div>
 
-      <ul>
+      {/* A rail down the left binds a night's periods together, so a broken
+          night reads as one night in two parts rather than as two entries that
+          happen to be adjacent. No "2 periods" chip is needed — the rail says
+          it. */}
+      <ol className="border-t border-night-700/50 bg-night-900/30 px-3.5 py-2.5">
         {night.periods.map((period) => {
           // The awake stretch that preceded this period, if it wasn't the first.
           const gapBefore = period.index > 0 ? night.gaps[period.index - 1] : null;
+          const last = period.index === night.periods.length - 1;
 
           return (
             <li key={period.row.id}>
               {gapBefore && (
-                <div className="flex items-center gap-2 px-4 py-1 pl-11">
-                  <span className="h-3 w-px bg-night-600" />
-                  <span
-                    className={`text-[11px] font-medium ${
+                <div className="flex gap-3">
+                  {selecting && <span className="w-4 shrink-0" />}
+                  <span className="flex w-2.5 shrink-0 justify-center">
+                    <span
+                      className={`w-0 border-l border-dashed ${
+                        gapBefore.fajr ? 'border-dawn-500/60' : 'border-night-600'
+                      }`}
+                    />
+                  </span>
+                  <p
+                    className={`py-1.5 text-[11px] font-medium ${
                       gapBefore.fajr ? 'text-dawn-400' : 'text-night-400'
                     }`}
                   >
                     {gapBefore.fajr ? 'Awake for Fajr' : 'Awake'} ·{' '}
-                    {formatDuration(gapBefore.minutes)} · {formatTime(gapBefore.from)}–
-                    {formatTime(gapBefore.to)}
-                  </span>
+                    {formatDuration(gapBefore.minutes)}
+                  </p>
                 </div>
               )}
 
-              <div className="group flex items-start gap-3 px-4 py-2.5">
+              <div className="group flex gap-3">
                 {selecting && (
-                  <span className="pt-0.5">
+                  <span className="w-4 shrink-0 pt-1.5">
                     <Checkbox
                       checked={selected.has(period.row.id)}
                       onChange={(checked) => onTogglePeriod(period.row.id, checked)}
@@ -106,30 +153,39 @@ function NightGroup({
                   </span>
                 )}
 
-                <span
-                  className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
-                    period.index === 0
-                      ? 'bg-dream-500'
-                      : gapBefore?.fajr
-                        ? 'bg-dawn-500'
-                        : 'bg-dream-400'
-                  }`}
-                />
+                <span className="flex w-2.5 shrink-0 flex-col items-center">
+                  <span
+                    className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${
+                      period.index === 0
+                        ? 'bg-dream-500'
+                        : gapBefore?.fajr
+                          ? 'bg-dawn-500'
+                          : 'bg-dream-300'
+                    }`}
+                  />
+                  {!last && <span className="mt-1 w-0 flex-1 border-l border-night-700" />}
+                </span>
 
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 py-1">
                   <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5">
-                    <span className="text-sm tabular-nums text-night-100">
+                    <span className="text-sm font-medium tabular-nums text-night-100">
                       {formatTime(period.start)} → {formatTime(period.end)}
                     </span>
-                    <span className="text-xs font-medium tabular-nums text-night-300">
-                      {formatDuration(period.minutes)}
-                    </span>
-                    <span className="text-[11px] text-night-500">
-                      {describePeriod(night, period)}
-                    </span>
+                    {/* Only worth saying when the night was broken. On a single
+                        period both of these would just repeat the header. */}
+                    {night.fragmented && (
+                      <>
+                        <span className="text-xs tabular-nums text-night-300">
+                          {formatDuration(period.minutes)}
+                        </span>
+                        <span className="text-[11px] text-night-500">
+                          {describePeriod(night, period)}
+                        </span>
+                      </>
+                    )}
                   </div>
                   {period.row.note && (
-                    <p className="mt-1 text-xs leading-relaxed text-night-400">
+                    <p className="mt-1 border-l-2 border-night-700 pl-2 text-xs leading-relaxed text-night-400">
                       {period.row.note}
                     </p>
                   )}
@@ -137,9 +193,13 @@ function NightGroup({
 
                 {/* Revealed on hover on a pointer device, always visible on a
                     touch one — there is no hover to reveal them with. Hidden
-                    while selecting, where the whole row is a tick target and
-                    acting on one entry is not what the mode is for. */}
-                <div className={`flex shrink-0 items-center gap-0.5 ${selecting ? 'hidden' : ''}`}>
+                    while selecting, where acting on one entry is not what the
+                    mode is for. */}
+                <div
+                  className={`flex shrink-0 items-start gap-0.5 pt-0.5 ${
+                    selecting ? 'hidden' : ''
+                  }`}
+                >
                   <button
                     onClick={() => onEdit(period.row)}
                     title="Edit this entry"
@@ -161,7 +221,7 @@ function NightGroup({
             </li>
           );
         })}
-      </ul>
+      </ol>
     </li>
   );
 }
@@ -261,8 +321,10 @@ export function SleepHistory({
 
   return (
     <>
-      <Card>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-night-700/70 px-4 py-3">
+      {/* The toolbar is its own bar rather than the first row of the list, so
+          the cards below it are all one kind of thing. */}
+      <div className="mb-3">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-2xl border border-night-700/70 bg-night-850/70 px-4 py-3">
           {selecting ? (
             <>
               <label className="flex cursor-pointer items-center gap-2.5">
@@ -316,21 +378,21 @@ export function SleepHistory({
             </>
           )}
         </div>
+      </div>
 
-        <ul>
-          {nights.map((night) => (
-            <NightGroup
-              key={night.key}
-              night={night}
-              selecting={selecting}
-              selected={selected}
-              onTogglePeriod={togglePeriod}
-              onEdit={onEdit}
-              onDeleteOne={(id) => setPending([id])}
-            />
-          ))}
-        </ul>
-      </Card>
+      <ul className="space-y-3">
+        {nights.map((night) => (
+          <NightGroup
+            key={night.key}
+            night={night}
+            selecting={selecting}
+            selected={selected}
+            onTogglePeriod={togglePeriod}
+            onEdit={onEdit}
+            onDeleteOne={(id) => setPending([id])}
+          />
+        ))}
+      </ul>
 
       {pending && (
         <ConfirmDialog

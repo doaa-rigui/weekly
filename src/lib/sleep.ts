@@ -289,14 +289,43 @@ export function formatNightRange(night: Night): string {
   return formatNightRangeOf(night.date);
 }
 
+/**
+ * `Sep 9 → Sep 10`. The same two dates without their weekdays, for places
+ * that already name the day some other way — the history page shows it beside
+ * a date badge, where "Wed" would be said twice.
+ */
+export function formatNightRangeCompact(night: Night): string {
+  const morning = new Date(night.date);
+  morning.setDate(morning.getDate() + 1);
+  return `${formatShortDate(night.date)} → ${formatShortDate(morning)}`;
+}
+
+/** `Wed`. The weekday alone, for the history page's date badge. */
+export function formatWeekdayShort(date: Date): string {
+  return date.toLocaleDateString(undefined, { weekday: 'short' });
+}
+
 /** `Last night`, `Tonight`, `2 nights ago`, else the date. */
 export function describeNightAge(night: Night, now = new Date()): string {
+  return describeNightRecency(night, now) ?? formatShortDate(night.date);
+}
+
+/**
+ * `Tonight`, `Last night`, `2 nights ago` — or null once the night is far
+ * enough back that counting nights stops meaning anything.
+ *
+ * Separate from `describeNightAge` because a caller that already shows the
+ * date needs to know whether there is anything *else* to say: the history
+ * page's night cards carry a date badge, and falling back to the date there
+ * would print it three times in one heading.
+ */
+export function describeNightRecency(night: Night, now = new Date()): string | null {
   const today = nightStartOf(now);
   const days = Math.round((today.getTime() - night.date.getTime()) / 86400000);
   if (days <= 0) return 'Tonight';
   if (days === 1) return 'Last night';
   if (days < 7) return `${days} nights ago`;
-  return formatShortDate(night.date);
+  return null;
 }
 
 /** What a period is called, given where it falls in its night. */
