@@ -33,6 +33,25 @@ import { Modal } from './ui';
 /** Where a prefilled form starts from — used by "add sleep after Fajr". */
 export type SleepPrefill = { start: Date; end: Date };
 
+/**
+ * What the entry will do to its night once saved. Held as data rather than
+ * built inline, because editing doubles the cases: an entry can stay in its
+ * night, move to another one, or move to a night that doesn't exist yet.
+ */
+type Preview = {
+  minutes: number;
+  /** Local midnight of the evening the entry will belong to. */
+  evening: Date;
+  /** The night it lands in, if that night already has entries. */
+  existing: Night | null;
+  /** Editing, and the times still fall inside the same night. */
+  staying: boolean;
+  /** What that night will total afterwards. */
+  total: number;
+  /** Which sleep period of that night this will be. */
+  periodCount: number;
+};
+
 function Field({
   label,
   icon,
@@ -62,10 +81,43 @@ function Field({
   );
 }
 
+/** The one line explaining where the entry will land, in all five cases. */
+function NightPreview({ preview, editing }: { preview: Preview; editing: boolean }) {
+  const range = preview.existing
+    ? formatNightRange(preview.existing)
+    : formatNightRangeOf(preview.evening);
+  const name = <span className="font-medium text-night-200">{range}</span>;
+  const total = (
+    <span className="font-medium text-dream-300">{formatDuration(preview.total)}</span>
+  );
+
+  if (editing && preview.staying) {
+    return (
+      <>
+        Stays in the night of {name} — that night will total {total}.
+      </>
+    );
+  }
+  if (!preview.existing) {
+    return (
+      <>
+        {editing ? 'Moves to a new night' : 'A new night'}: {name}.
+      </>
+    );
+  }
+  return (
+    <>
+      {editing ? 'Moves to' : 'Joins'} the night of {name} as sleep period{' '}
+      {preview.periodCount} — that night will total {total}.
+    </>
+  );
+}
+
 export function SleepForm({
   nights,
   periods,
   prefill,
+  editing,
   saving,
   onSubmit,
   onClose,
@@ -75,21 +127,31 @@ export function SleepForm({
   /** Existing periods, for the overlap check. */
   periods: SleepPeriod[];
   prefill?: SleepPrefill;
+  /** The entry being corrected. Absent when adding a new one. */
+  editing?: SleepPeriod;
   saving: boolean;
   onSubmit: (draft: SleepDraft) => Promise<boolean>;
   onClose: () => void;
 }) {
-  const initial = useMemo(() => prefill ?? suggestedDraftTimes(), [prefill]);
+  const initial = useMemo(() => {
+    if (editing) {
+      return { start: new Date(editing.started_at), end: new Date(editing.ended_at) };
+    }
+    return prefill ?? suggestedDraftTimes();
+  }, [editing, prefill]);
+
   const [startValue, setStartValue] = useState(() => toLocalInputValue(initial.start));
   const [endValue, setEndValue] = useState(() => toLocalInputValue(initial.end));
-  const [note, setNote] = useState('');
+  const [note, setNote] = useState(() => editing?.note ?? '');
   const [submitted, setSubmitted] = useState(false);
 
   const start = fromLocalInputValue(startValue);
   const end = fromLocalInputValue(endValue);
 
   const problem = validateDraft(start, end);
-  const overlap = !problem && start && end ? findOverlap(periods, start, end) : null;
+  // An entry cannot overlap itself, so the one being edited is excluded.
+  const overlap =
+    !problem && start && end ? findOverlap(periods, start, end, editing?.id) : null;
   const blocked = problem !== null || overlap !== null;
 
   /**
@@ -97,19 +159,29 @@ export function SleepForm({
    * which is the point — the night an entry belongs to is derived, and derived
    * rules are only trustworthy when you can watch them work.
    */
-  const preview = useMemo(() => {
+  const preview = useMemo<Preview | null>(() => {
     if (!start || !end || end <= start) return null;
     const minutes = Math.round((end.getTime() - start.getTime()) / 60000);
-    const evening = nightStartOf(start);
     const existing = nights.find((n) => n.key === nightKeyOf(start)) ?? null;
+
+    // When editing, that night's stored total still counts this entry's *old*
+    // times, so its own contribution comes out before the new one goes in —
+    // otherwise correcting a time would appear to lengthen the night.
+    const staying = editing
+      ? (existing?.periods.find((p) => p.row.id === editing.id) ?? null)
+      : null;
+    const others = (existing?.totalMinutes ?? 0) - (staying?.minutes ?? 0);
+
     return {
       minutes,
-      evening,
+      evening: nightStartOf(start),
       existing,
-      total: minutes + (existing?.totalMinutes ?? 0),
-      periodCount: (existing?.periods.length ?? 0) + 1,
+      staying: staying !== null,
+      total: minutes + others,
+      // An edit that stays in its night doesn't add a period; anything else does.
+      periodCount: (existing?.periods.length ?? 0) + (staying ? 0 : 1),
     };
-  }, [start, end, nights]);
+  }, [start, end, nights, editing]);
 
   const save = async () => {
     setSubmitted(true);
@@ -118,7 +190,7 @@ export function SleepForm({
   };
 
   return (
-    <Modal title="Add sleep" onClose={onClose}>
+    <Modal title={editing ? 'Edit sleep' : 'Add sleep'} onClose={onClose}>
       <div className="space-y-4">
         <Field
           label="Fell asleep"
@@ -146,27 +218,7 @@ export function SleepForm({
               </span>
             </div>
             <p className="mt-2 border-t border-night-700/70 pt-2 text-xs leading-relaxed text-night-400">
-              {preview.existing ? (
-                <>
-                  Joins the night of{' '}
-                  <span className="font-medium text-night-200">
-                    {formatNightRange(preview.existing)}
-                  </span>{' '}
-                  as sleep period {preview.periodCount} — that night will total{' '}
-                  <span className="font-medium text-dream-300">
-                    {formatDuration(preview.total)}
-                  </span>
-                  .
-                </>
-              ) : (
-                <>
-                  A new night:{' '}
-                  <span className="font-medium text-night-200">
-                    {formatNightRangeOf(preview.evening)}
-                  </span>
-                  .
-                </>
-              )}
+              <NightPreview preview={preview} editing={Boolean(editing)} />
             </p>
           </div>
         )}
@@ -211,7 +263,7 @@ export function SleepForm({
             disabled={saving}
             className="flex-[1.4] rounded-full bg-dream-500 px-4 py-2.5 text-sm font-semibold text-night-950 transition-colors hover:bg-dream-400 disabled:opacity-60"
           >
-            {saving ? 'Saving…' : 'Save sleep'}
+            {saving ? 'Saving…' : editing ? 'Save changes' : 'Save sleep'}
           </button>
         </div>
       </div>

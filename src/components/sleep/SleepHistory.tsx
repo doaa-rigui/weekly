@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { MoonStar, Trash2 } from 'lucide-react';
+import { MoonStar, Pencil, Trash2 } from 'lucide-react';
 import {
   describeNightAge,
   describePeriod,
@@ -7,6 +7,7 @@ import {
   formatNightRange,
   formatTime,
   type Night,
+  type SleepPeriod,
 } from '@/lib/sleep';
 import { Card, Checkbox, Chip, ConfirmDialog, Empty } from './ui';
 
@@ -30,12 +31,14 @@ function NightGroup({
   selected,
   onToggleNight,
   onTogglePeriod,
+  onEdit,
   onDeleteOne,
 }: {
   night: Night;
   selected: Set<string>;
   onToggleNight: (night: Night, checked: boolean) => void;
   onTogglePeriod: (id: string, checked: boolean) => void;
+  onEdit: (row: SleepPeriod) => void;
   onDeleteOne: (id: string) => void;
 }) {
   const ids = periodIdsOf(night);
@@ -129,14 +132,26 @@ function NightGroup({
                   )}
                 </div>
 
-                <button
-                  onClick={() => onDeleteOne(period.row.id)}
-                  title="Delete this entry"
-                  aria-label={`Delete sleep from ${formatTime(period.start)}`}
-                  className="shrink-0 rounded-lg p-1.5 text-night-500 transition-colors hover:bg-rose-500/15 hover:text-rose-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                {/* Revealed on hover on a pointer device, always visible on a
+                    touch one — there is no hover to reveal them with. */}
+                <div className="flex shrink-0 items-center gap-0.5">
+                  <button
+                    onClick={() => onEdit(period.row)}
+                    title="Edit this entry"
+                    aria-label={`Edit sleep from ${formatTime(period.start)}`}
+                    className="rounded-lg p-1.5 text-night-500 transition-colors hover:bg-dream-500/15 hover:text-dream-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => onDeleteOne(period.row.id)}
+                    title="Delete this entry"
+                    aria-label={`Delete sleep from ${formatTime(period.start)}`}
+                    className="rounded-lg p-1.5 text-night-500 transition-colors hover:bg-rose-500/15 hover:text-rose-300 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             </li>
           );
@@ -151,6 +166,7 @@ export function SleepHistory({
   entryCount,
   busy,
   onDelete,
+  onEdit,
   onAdd,
 }: {
   nights: Night[];
@@ -158,6 +174,7 @@ export function SleepHistory({
   entryCount: number;
   busy: boolean;
   onDelete: (ids: string[]) => Promise<boolean>;
+  onEdit: (row: SleepPeriod) => void;
   onAdd: () => void;
 }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -277,6 +294,7 @@ export function SleepHistory({
               selected={selected}
               onToggleNight={toggleNight}
               onTogglePeriod={togglePeriod}
+              onEdit={onEdit}
               onDeleteOne={(id) => setPending([id])}
             />
           ))}

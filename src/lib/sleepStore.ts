@@ -165,5 +165,16 @@ export function useSleep(userId: string): SleepStore {
 
   const dismissError = useCallback(() => setError(null), []);
 
-  return { periods, nights, summary, loading, saving, error, dismissError, create, remove };
+  return {
+    periods,
+    nights,
+    summary,
+    loading,
+    saving,
+    error,
+    dismissError,
+    create,
+    update,
+    remove,
+  };
 }

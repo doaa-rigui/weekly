@@ -3,7 +3,7 @@ import { CalendarDays, Loader2, LogOut, MoonStar, Plus, X } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { useView } from '@/lib/view';
 import { useSleep } from '@/lib/sleepStore';
-import { nightSlots } from '@/lib/sleep';
+import { nightSlots, type SleepPeriod } from '@/lib/sleep';
 import { SleepDashboard } from './SleepDashboard';
 import { SleepForm, type SleepPrefill } from './SleepForm';
 import { SleepHistory } from './SleepHistory';
@@ -34,11 +34,14 @@ export function SleepApp({ userId }: { userId: string }) {
 
   const [page, setPage] = useState<Page>('dashboard');
   /**
-   * `null` means closed. An open form carries its prefill, so "add another
-   * period to this night" and the plain "Add sleep" button are the same panel
-   * rather than two.
+   * `null` means closed. An open form carries either a prefill or the entry it
+   * is correcting, so adding, continuing a night, and editing are all the same
+   * panel rather than three.
    */
-  const [form, setForm] = useState<{ prefill?: SleepPrefill } | null>(null);
+  const [form, setForm] = useState<{
+    prefill?: SleepPrefill;
+    editing?: SleepPeriod;
+  } | null>(null);
 
   const slots = useMemo(() => nightSlots(store.nights), [store.nights]);
 
@@ -123,6 +126,7 @@ export function SleepApp({ userId }: { userId: string }) {
             entryCount={store.periods.length}
             busy={store.saving}
             onDelete={store.remove}
+            onEdit={(row) => setForm({ editing: row })}
             onAdd={() => setForm({})}
           />
         )}
@@ -133,8 +137,11 @@ export function SleepApp({ userId }: { userId: string }) {
           nights={store.nights}
           periods={store.periods}
           prefill={form.prefill}
+          editing={form.editing}
           saving={store.saving}
-          onSubmit={store.create}
+          onSubmit={(draft) =>
+            form.editing ? store.update(form.editing.id, draft) : store.create(draft)
+          }
           onClose={() => setForm(null)}
         />
       )}
