@@ -180,7 +180,11 @@ export function Card({
   );
 }
 
-/** One number with its label. The dashboard's second row is four of these. */
+/**
+ * One number with its label. The dashboard's secondary row is two of these,
+ * deliberately shorter than the cards around them: they are context for last
+ * night and for the chart, so they should cost a glance and little height.
+ */
 export function Stat({
   label,
   value,
@@ -189,14 +193,15 @@ export function Stat({
 }: {
   label: string;
   value: string;
-  hint?: string;
+  /** Free-form, so a caller can put a trend arrow in it. */
+  hint?: ReactNode;
   accent?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-night-700/70 bg-night-850/70 px-4 py-3.5">
-      <p className="text-[11px] font-medium uppercase tracking-wider text-night-400">{label}</p>
-      <p className={`mt-1 text-xl font-semibold tabular-nums ${accent}`}>{value}</p>
-      {hint && <p className="mt-0.5 text-xs text-night-400">{hint}</p>}
+    <div className="flex h-full flex-col justify-center rounded-xl border border-night-700/70 bg-night-850/70 px-3.5 py-2.5">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-night-400">{label}</p>
+      <p className={`mt-0.5 text-lg font-semibold leading-tight tabular-nums ${accent}`}>{value}</p>
+      {hint && <p className="mt-0.5 truncate text-[11px] text-night-400">{hint}</p>}
     </div>
   );
 }

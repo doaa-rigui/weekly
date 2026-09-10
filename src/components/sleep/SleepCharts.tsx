@@ -123,9 +123,9 @@ function labelEvery(pixels: number, count: number): number {
 
 // -- Chart 1: timeline -------------------------------------------------------
 
-const ROW_HEIGHT = 15;
-const BAR_HEIGHT = 9;
-const AXIS_HEIGHT = 22;
+const ROW_HEIGHT = 21;
+const BAR_HEIGHT = 13;
+const AXIS_HEIGHT = 24;
 
 /**
  * One row per night, drawn against a shared clock. This is the view the whole
@@ -308,7 +308,7 @@ function TimelineChart({
 
 // -- Chart 2: duration -------------------------------------------------------
 
-const DURATION_HEIGHT = 232;
+const DURATION_HEIGHT = 320;
 /** The y axis always reaches at least this, so short nights look short. */
 const DURATION_MIN_HOURS = 10;
 
@@ -457,7 +457,7 @@ function DurationChart({
 
 // -- Chart 3: schedule -------------------------------------------------------
 
-const SCHEDULE_HEIGHT = 260;
+const SCHEDULE_HEIGHT = 340;
 
 /**
  * Bedtime and final wake-up as two lines with the night shaded between them.
@@ -625,7 +625,7 @@ function ScheduleChart({
 
 // -- Chart 4: consistency ----------------------------------------------------
 
-const LANE_HEIGHT = 96;
+const LANE_HEIGHT = 132;
 const CONSISTENCY_HEIGHT = LANE_HEIGHT * 2 + 34;
 /** The axis reaches at least an hour either side, so small drift looks small. */
 const MIN_DEVIATION = 60;
@@ -909,7 +909,7 @@ export function SleepChartCard({
     <section className="rounded-2xl border border-night-700/70 bg-night-850/70 p-4 backdrop-blur-sm sm:p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold text-night-100">Last 30 nights</h2>
+          <h2 className="text-base font-semibold text-night-100">Last 30 nights</h2>
           <p className="mt-0.5 text-xs text-night-400">{captionFor(mode, average)}</p>
         </div>
         <div className="-mx-1 overflow-x-auto px-1 pb-0.5">

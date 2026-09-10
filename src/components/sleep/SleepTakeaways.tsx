@@ -305,12 +305,14 @@ export function TakeawaysPreview({
   takeaways: SleepTakeaway[];
   onOpen: () => void;
 }) {
-  const shown = takeaways.slice(0, 3);
+  // Four rather than three: this section is meant to be read, and the chart
+  // above it no longer leaves the page short of room.
+  const shown = takeaways.slice(0, 4);
 
   return (
     <Card className="p-4 sm:p-5">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="flex items-center gap-2 text-sm font-semibold text-night-100">
+        <h2 className="flex items-center gap-2 text-base font-semibold text-night-100">
           <Lightbulb className="h-4 w-4 text-dream-400" />
           What you've learned
         </h2>
@@ -323,25 +325,25 @@ export function TakeawaysPreview({
       </div>
 
       {shown.length === 0 ? (
-        <p className="mt-3 text-xs leading-relaxed text-night-400">
+        <p className="mt-3 text-sm leading-relaxed text-night-400">
           Noticed something that changes how you sleep? Keep it here so it's still around next
           month.
         </p>
       ) : (
-        <ul className="mt-3 space-y-2">
+        <ul className="mt-3 space-y-2.5">
           {shown.map((takeaway) => {
             const spec = EFFECTS[takeaway.effect];
             return (
               <li key={takeaway.id} className="flex items-start gap-2.5">
                 <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${spec.dot}`} />
-                <p className="min-w-0 flex-1 text-xs leading-relaxed text-night-300">
+                <p className="min-w-0 flex-1 text-sm leading-relaxed text-night-200">
                   {takeaway.text}
                 </p>
               </li>
             );
           })}
           {takeaways.length > shown.length && (
-            <li className="pl-[18px] text-[11px] text-night-500">
+            <li className="pl-[18px] text-xs text-night-500">
               +{takeaways.length - shown.length} more
             </li>
           )}
