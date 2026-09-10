@@ -64,7 +64,7 @@ export function SleepApp({ userId }: { userId: string }) {
   return (
     <div className="min-h-screen bg-night-900 bg-night-glow bg-no-repeat">
       <header className="sticky top-0 z-30 border-b border-night-700/60 bg-night-900/80 backdrop-blur-md">
-        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6 xl:max-w-[1600px]">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-dream-500/15 text-dream-300">
               <MoonStar className="h-5 w-5" />
@@ -107,7 +107,11 @@ export function SleepApp({ userId }: { userId: string }) {
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 py-5 sm:px-6">
+      {/* Wide, because the dashboard puts a rail either side of its chart on a
+          desktop and needs the room for all three. The other two pages are
+          lists to be read: they stay centred at a reading width inside it
+          rather than stretching to the full span. */}
+      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 xl:max-w-[1600px]">
         <div className="mb-4 flex items-center justify-between gap-3">
           <Segmented options={PAGES} value={page} onChange={setPage} label="Sleep pages" />
           {page !== 'takeaways' && store.periods.length > 0 && (
@@ -143,16 +147,20 @@ export function SleepApp({ userId }: { userId: string }) {
             onAdd={(prefill) => setForm({ prefill })}
           />
         ) : page === 'takeaways' ? (
-          <SleepTakeaways store={takeaways} />
+          <div className="mx-auto max-w-5xl">
+            <SleepTakeaways store={takeaways} />
+          </div>
         ) : (
-          <SleepHistory
-            nights={store.nights}
-            entryCount={store.periods.length}
-            busy={store.saving}
-            onDelete={store.remove}
-            onEdit={(row) => setForm({ editing: row })}
-            onAdd={() => setForm({})}
-          />
+          <div className="mx-auto max-w-5xl">
+            <SleepHistory
+              nights={store.nights}
+              entryCount={store.periods.length}
+              busy={store.saving}
+              onDelete={store.remove}
+              onEdit={(row) => setForm({ editing: row })}
+              onAdd={() => setForm({})}
+            />
+          </div>
         )}
       </main>
 

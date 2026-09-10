@@ -296,7 +296,8 @@ export function SleepTakeaways({ store }: { store: TakeawayStore }) {
 
 /**
  * The dashboard's glimpse of the list. A lesson you never see changes nothing,
- * so the most recent few sit under the charts with a way through to the rest.
+ * so it rides the dashboard's right-hand rail, beside the chart rather than
+ * under it, with a way through to the rest.
  */
 export function TakeawaysPreview({
   takeaways,
@@ -305,13 +306,13 @@ export function TakeawaysPreview({
   takeaways: SleepTakeaway[];
   onOpen: () => void;
 }) {
-  // Four rather than three: this section is meant to be read, and the chart
-  // above it no longer leaves the page short of room.
-  const shown = takeaways.slice(0, 4);
+  // Six, because the rail is as tall as the chart beside it. Any fewer and
+  // there is a column of empty card under them.
+  const shown = takeaways.slice(0, 6);
 
   return (
     <Card className="p-4 sm:p-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <h2 className="flex items-center gap-2 text-base font-semibold text-night-100">
           <Lightbulb className="h-4 w-4 text-dream-400" />
           What you've learned

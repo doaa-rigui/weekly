@@ -162,40 +162,60 @@ export function SleepDashboard({
   }
 
   return (
-    <div className="space-y-3">
-      {/* The averages are context for last night rather than headlines of
-          their own, so they sit beside it in a narrow column — two short
-          tiles, not a row of cards taking a band of the page to themselves.
-          Below `lg` there isn't the width for that, and they drop under it. */}
-      <div className="grid gap-2 sm:gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <LastNightCard night={latest} onAddPeriod={onAdd} />
+    /**
+     * Three columns on a desktop, so the chart sits in the middle of the page
+     * rather than in the middle of a column: last night and its two averages
+     * in the left rail, the thirty nights centred, the standing lessons in the
+     * right rail. Both rails carry short cards, which is what makes the
+     * arrangement work — they are read at a glance, and neither is asked to
+     * fill the chart's height.
+     *
+     * They stick below the header so both stay on screen while the chart
+     * scrolls; the takeaways in particular used to sit under 600 pixels of
+     * chart, which meant they were only ever read on purpose.
+     *
+     * One column below `xl`, in the same order — there is no width for rails.
+     */
+    <div className="grid items-start gap-3 xl:grid-cols-[20rem_minmax(0,1fr)_20rem]">
+      {/* `top` clears the sticky header. */}
+      <div className="space-y-2 sm:space-y-3 xl:sticky xl:top-[4.75rem]">
+        {/* The averages are context for last night rather than headlines of
+            their own, so they sit beside it — two short tiles, not a row of
+            cards taking a band of the page to themselves. In the rail they go
+            under it; between `lg` and `xl` there is no rail and they sit to
+            its right; narrower still and they share a row beneath it. */}
+        <div className="grid gap-2 sm:gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:grid-cols-1">
+          <LastNightCard night={latest} onAddPeriod={onAdd} />
 
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-1 lg:grid-rows-2">
-          <Stat
-            label="Last 7 nights"
-            value={summary.weekAverage !== null ? formatDuration(summary.weekAverage) : '—'}
-            hint="average per night"
-          />
-          <Stat
-            label="Trend"
-            value={summary.monthAverage !== null ? formatDuration(summary.monthAverage) : '—'}
-            hint={
-              summary.trendMinutes !== null ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <Trend minutes={summary.trendMinutes} />
-                  vs previous week
-                </span>
-              ) : (
-                '30-night average'
-              )
-            }
-          />
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-1 lg:grid-rows-2">
+            <Stat
+              label="Last 7 nights"
+              value={summary.weekAverage !== null ? formatDuration(summary.weekAverage) : '—'}
+              hint="average per night"
+            />
+            <Stat
+              label="Trend"
+              value={summary.monthAverage !== null ? formatDuration(summary.monthAverage) : '—'}
+              hint={
+                summary.trendMinutes !== null ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Trend minutes={summary.trendMinutes} />
+                    vs previous week
+                  </span>
+                ) : (
+                  '30-night average'
+                )
+              }
+            />
+          </div>
         </div>
       </div>
 
       <SleepChartCard slots={slots} average={summary.monthAverage} consistency={consistency} />
 
-      <TakeawaysPreview takeaways={takeaways} onOpen={onOpenTakeaways} />
+      <div className="xl:sticky xl:top-[4.75rem]">
+        <TakeawaysPreview takeaways={takeaways} onOpen={onOpenTakeaways} />
+      </div>
     </div>
   );
 }
