@@ -887,8 +887,13 @@ function Inspector({ slot }: { slot: NightSlot | null }) {
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
       <span className="font-semibold text-night-100">{formatNightRange(night)}</span>
-      <span className="font-semibold tabular-nums text-dream-300">
+      {/* The one number the line exists to deliver, so it is the one thing
+          carrying a fill rather than sitting in the run of plain text. */}
+      <span className="inline-flex items-baseline gap-1 rounded-md border border-dream-500/45 bg-dream-500/20 px-2 py-0.5 text-[13px] font-bold tabular-nums text-dream-300">
         {formatDuration(night.totalMinutes)}
+        <span className="text-[10px] font-medium uppercase tracking-wide text-dream-400">
+          asleep
+        </span>
       </span>
       {night.periods.map((period) => (
         <span key={period.row.id} className="tabular-nums text-night-300">
