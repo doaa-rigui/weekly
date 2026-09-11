@@ -95,7 +95,7 @@ export function DayTagMenu({
         onClick={() => (open ? close() : show())}
         aria-expanded={open}
         title={current ? `${dayLabel}: ${current.label}` : `Tag ${dayLabel}`}
-        className={`flex min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold transition-colors sm:text-[11px] ${
+        className={`flex min-w-0 max-w-full items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition-colors ${
           current
             ? ''
             : 'border-dashed border-slate-300 text-slate-400 hover:border-slate-400 hover:text-slate-600'

@@ -796,7 +796,7 @@ export function Planner({
               className="pointer-events-none relative"
               style={{ gridColumn: '1', gridRow: '1', zIndex: 26 }}
             >
-              <span className="absolute -bottom-0.5 right-2 text-[10px] font-medium text-slate-400">
+              <span className="absolute -bottom-0.5 right-2 text-[11px] font-medium text-slate-400">
                 {formatHour(0)}
               </span>
             </div>
@@ -820,7 +820,7 @@ export function Planner({
                   <span className="flex items-baseline gap-1">
                     <span
                       title={isToday ? `${label.full} · today` : label.full}
-                      className={`text-xs font-semibold uppercase tracking-wider sm:text-sm ${
+                      className={`text-[11px] font-semibold uppercase tracking-wider sm:text-xs ${
                         isToday
                           ? 'rounded-full bg-blue-600 px-2 py-0.5 text-white'
                           : 'text-slate-600'
@@ -830,7 +830,7 @@ export function Planner({
                     </span>
                     {/* Which week of a longer planner this column belongs to. */}
                     {weeks > 1 && (
-                      <span className="text-[9px] font-semibold text-slate-400">W{label.week}</span>
+                      <span className="text-[10px] font-semibold text-slate-400">W{label.week}</span>
                     )}
                   </span>
                   <DayTagMenu
@@ -867,11 +867,11 @@ export function Planner({
                   gridRow: `${selGrid.rowStart} / ${selGrid.rowEnd}`,
                 }}
               >
-                <span className="text-[10px] font-semibold leading-tight text-blue-800">
+                <span className="text-[11px] font-semibold leading-tight text-blue-800">
                   {formatTime(selDraft.start_minute)} – {formatTime(selDraft.end_minute)}
                 </span>
                 {selDraft.days.length > 1 && (
-                  <span className="ml-1 text-[10px] font-medium leading-tight text-blue-700">
+                  <span className="ml-1 text-[11px] font-medium leading-tight text-blue-700">
                     · {selDraft.days.length} days
                   </span>
                 )}
@@ -926,7 +926,10 @@ export function Planner({
                   <span
                     className={`flex items-center gap-1 truncate font-semibold leading-tight ${
                       isCompact
-                        ? `absolute left-1 top-1 z-10 rounded bg-inherit px-1 text-[10px] ${
+                        ? // The one size held below the shared 11px floor: a
+                          // compact block can be a single 12px slot tall, and
+                          // its label has to fit inside that.
+                          `absolute left-1 top-1 z-10 rounded bg-inherit px-1 text-[10px] ${
                             canOverflowLabel ? 'max-w-[calc(100%+160px)]' : 'max-w-[calc(100%-8px)]'
                           }`
                         : 'text-xs sm:text-sm'
@@ -940,7 +943,7 @@ export function Planner({
                     )}
                   </span>
                   {!isCompact && (
-                    <span className="mt-0.5 flex items-center gap-1.5 text-[10px] leading-tight opacity-80">
+                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-tight opacity-80">
                       <span className="truncate">
                         {formatTime(b.start_minute)} – {formatTime(b.end_minute)}
                       </span>
@@ -1055,7 +1058,7 @@ function NowMarker({ minute, dayIndex }: { minute: number; dayIndex: number }) {
         style={{ gridColumn: '1', gridRow: `${slot + 2}`, zIndex: 22 }}
       >
         <span
-          className="absolute right-1 -translate-y-1/2 rounded bg-red-500 px-1 py-px text-[10px] font-semibold leading-tight text-white shadow-sm"
+          className="absolute right-1 -translate-y-1/2 rounded bg-red-500 px-1 py-px text-[11px] font-semibold leading-tight text-white shadow-sm"
           style={{ top: offset }}
         >
           {formatTime(minute)}
@@ -1117,7 +1120,7 @@ function HourRow({
           the grid body, so that one is drawn up in the header row instead.
         */}
         {hour > 0 && (
-          <span className="absolute -top-2.5 right-2 text-[10px] font-medium text-slate-400">
+          <span className="absolute -top-2.5 right-2 text-[11px] font-medium text-slate-400">
             {formatHour(hour)}
           </span>
         )}
@@ -1127,7 +1130,7 @@ function HourRow({
           its last marking.
         */}
         {isLastHour && (
-          <span className="absolute bottom-0.5 right-2 text-[10px] font-medium text-slate-400">
+          <span className="absolute bottom-0.5 right-2 text-[11px] font-medium text-slate-400">
             {formatHour(0)}
           </span>
         )}

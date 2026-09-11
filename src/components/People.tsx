@@ -153,7 +153,7 @@ export function PeoplePicker({
   return (
     <div ref={rootRef} className="relative">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
           People
         </span>
         {chosen.length > 0 && (
