@@ -1,4 +1,5 @@
-import { Fragment, useMemo, useState } from 'react';
+import { StickyNote } from 'lucide-react';
+import { Fragment, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
 import {
   MINUTES_PER_DAY,
   describePeriod,
@@ -930,8 +931,31 @@ export function SleepChartCard({
   const [mode, setMode] = useState<Mode>('timeline');
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [ref, width] = useMeasuredWidth<HTMLDivElement>();
+  /** Cursor position inside the plot, for the note bubble. */
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
   const active = activeKey ? slots.find((s) => s.key === activeKey) ?? null : null;
+  const notes = active?.night?.periods.filter((period) => period.row.note) ?? [];
+
+  /**
+   * Only tracked while the cursor is on a night that has something written
+   * about it — a bubble is the one thing here that has to sit *at* the
+   * pointer, and following it on every night would re-render the chart for
+   * nothing.
+   */
+  const trackCursor = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (notes.length === 0) {
+      if (cursor) setCursor(null);
+      return;
+    }
+    const box = event.currentTarget.getBoundingClientRect();
+    setCursor({ x: event.clientX - box.left, y: event.clientY - box.top });
+  };
+
+  const TIP_WIDTH = 240;
+  // Kept inside the plot: past the right edge it hangs to the left of the
+  // cursor instead of off the card.
+  const tipLeft = cursor ? Math.max(0, Math.min(cursor.x + 14, width - TIP_WIDTH)) : 0;
 
   return (
     <section className="rounded-2xl border border-night-700/70 bg-night-850/70 p-4 backdrop-blur-sm sm:p-5">
@@ -954,7 +978,12 @@ export function SleepChartCard({
       </div>
 
       {/* Measured, not scaled: see the note at the top of this file. */}
-      <div ref={ref} className="mt-2 w-full">
+      <div
+        ref={ref}
+        className="relative mt-2 w-full"
+        onMouseMove={trackCursor}
+        onMouseLeave={() => setCursor(null)}
+      >
         {width > 0 &&
           (mode === 'timeline' ? (
             <TimelineChart
@@ -991,6 +1020,33 @@ export function SleepChartCard({
               Log three nights and this will show how regular your schedule is.
             </p>
           ))}
+
+        {/* What was written about the night, at the pointer that is asking
+            about it. It floats over the chart rather than sitting in the
+            line above, so the note arrives where the eye already is — and
+            `pointer-events-none` keeps it from stealing the hover that is
+            keeping it open. */}
+        {cursor && notes.length > 0 && (
+          <div
+            role="tooltip"
+            style={{ left: tipLeft, top: cursor.y + 16, width: TIP_WIDTH }}
+            className="pointer-events-none absolute z-20 rounded-lg border border-night-600 bg-night-900/95 px-2.5 py-2 text-[11px] leading-snug text-night-200 shadow-lg shadow-night-950/60 backdrop-blur-sm"
+          >
+            {notes.map((period) => (
+              <p key={`note-${period.row.id}`} className="flex gap-1.5 [&+p]:mt-1.5">
+                <StickyNote className="mt-px h-3 w-3 shrink-0 text-night-500" />
+                <span>
+                  {/* The time only earns its place on a broken night, where
+                      it says which of the periods the note belongs to. */}
+                  {active?.night?.fragmented && (
+                    <span className="text-night-400">{formatTime(period.start)} · </span>
+                  )}
+                  {period.row.note}
+                </span>
+              </p>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mt-3 border-t border-night-700/60 pt-3">
