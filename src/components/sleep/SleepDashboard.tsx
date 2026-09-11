@@ -1,6 +1,7 @@
 import { ArrowDownRight, ArrowUpRight, Minus, MoonStar, Plus } from 'lucide-react';
 import {
   describeNightAge,
+  formatClockOffset,
   formatDuration,
   formatNightRange,
   formatTime,
@@ -208,6 +209,26 @@ export function SleepDashboard({
               }
             />
           </div>
+        </div>
+
+        {/* When the night usually starts and ends, which the duration
+            averages above say nothing about: two people can both sleep 7h50m
+            and be on entirely different schedules. Same 30-night window. */}
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+          <Stat
+            label="Usual bedtime"
+            value={
+              summary.averageBedtime !== null ? formatClockOffset(summary.averageBedtime) : '—'
+            }
+            hint="30-night average"
+            accent="text-dream-300"
+          />
+          <Stat
+            label="Usual wake-up"
+            value={summary.averageWake !== null ? formatClockOffset(summary.averageWake) : '—'}
+            hint="30-night average"
+            accent="text-dawn-300"
+          />
         </div>
       </div>
 

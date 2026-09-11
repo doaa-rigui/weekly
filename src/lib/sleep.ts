@@ -420,6 +420,14 @@ export type SleepSummary = {
    * two weeks to compare, since a trend from one week is just a number.
    */
   trendMinutes: number | null;
+  /**
+   * The typical clock times of the 30-night window, as minutes past the
+   * night's own midnight — so `formatClockOffset` names them, and an 11 PM
+   * bedtime averages as 11 PM rather than wrapping through noon. Null until
+   * there is a night to average.
+   */
+  averageBedtime: number | null;
+  averageWake: number | null;
   /** Nights logged in the 30-night window. */
   loggedNights: number;
   /** How many of those were broken. */
@@ -448,6 +456,12 @@ export function summarize(nights: Night[]): SleepSummary {
       weekAverage !== null && previous.length >= 3
         ? Math.round(weekAverage - mean(durations(previous)))
         : null,
+    averageBedtime: window.length
+      ? Math.round(mean(window.map((n) => offsetInNight(n, n.bedtime))))
+      : null,
+    averageWake: window.length
+      ? Math.round(mean(window.map((n) => offsetInNight(n, n.finalWake))))
+      : null,
     loggedNights: window.length,
     fragmentedNights: window.filter((n) => n.fragmented).length,
     consistency: consistencyOf(window),
