@@ -88,12 +88,30 @@ function hourTicks(win: ClockWindow, stepHours: number): number[] {
   return ticks;
 }
 
-function clockStepFor(pixels: number, win: ClockWindow): number {
+/**
+ * Every hour where the labels fit, widening only when they would collide.
+ * `minPerLabel` is the room one label needs along the axis: a horizontal axis
+ * has to clear the label's width, a vertical one only its line height.
+ */
+function clockStepFor(pixels: number, win: ClockWindow, minPerLabel = 26): number {
   const hours = (win.end - win.start) / 60;
   const perHour = pixels / hours;
-  if (perHour > 46) return 2;
-  if (perHour > 30) return 3;
+  for (const step of [1, 2, 3]) {
+    if (perHour * step >= minPerLabel) return step;
+  }
   return 4;
+}
+
+/**
+ * An hour label for an axis that names every hour: the bare number, since noon
+ * and midnight keep their AM/PM and the run between them is read off those two
+ * anchors. At wider steps every label needs to stand on its own.
+ */
+function hourLabel(minutes: number, stepHours: number): string {
+  const full = formatClockOffset(minutes);
+  if (stepHours > 1) return full;
+  const hour = ((Math.round(minutes / 60) % 24) + 24) % 24;
+  return hour % 12 === 0 ? full : String(hour % 12);
 }
 
 /**
@@ -162,7 +180,8 @@ function TimelineChart({
   const xAt = (offset: number) =>
     labelW + ((offset - win.start) / (win.end - win.start)) * plotW;
 
-  const ticks = hourTicks(win, clockStepFor(plotW, win));
+  const clockStep = clockStepFor(plotW, win);
+  const ticks = hourTicks(win, clockStep);
   const showDates = width >= 520;
 
   return (
@@ -189,7 +208,7 @@ function TimelineChart({
               fill={midnight ? C.label : C.axis}
               fontWeight={midnight ? 600 : 400}
             >
-              {formatClockOffset(tick)}
+              {hourLabel(tick, clockStep)}
             </text>
           </Fragment>
         );
@@ -488,7 +507,8 @@ function ScheduleChart({
   // Evening at the top, morning at the bottom — the direction a night runs.
   const yAt = (offset: number) => padTop + ((offset - win.start) / (win.end - win.start)) * plotH;
 
-  const ticks = hourTicks(win, clockStepFor(plotH, win));
+  // A vertical axis stacks labels, so one only has to clear the line above it.
+  const ticks = hourTicks(win, clockStepFor(plotH, win, 14));
   const stride = labelEvery(plotW, slots.length);
 
   /**
