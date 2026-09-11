@@ -885,7 +885,10 @@ function Inspector({ slot }: { slot: NightSlot | null }) {
 
   const night = slot.night;
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+    /* One line, in the fixed-height slot the card reserves for it: the parts
+       keep their width and the row scrolls rather than wrapping, so a night
+       with three periods is no taller than a night with one. */
+    <div className="flex flex-nowrap items-center gap-x-3 whitespace-nowrap text-xs [&>*]:shrink-0">
       <span className="font-semibold text-night-100">{formatNightRange(night)}</span>
       {/* The one number the line exists to deliver, so it is the one thing
           carrying a fill rather than sitting in the run of plain text. */}
@@ -942,7 +945,11 @@ export function SleepChartCard({
         </div>
       </div>
 
-      <div className="mt-3 min-h-[18px]">
+      {/* A fixed height, not a minimum: this line rewrites itself as the
+          cursor moves from night to night, and a taller reading must not push
+          the chart down under the very cursor that is reading it. Anything
+          too long for one line scrolls sideways inside this box. */}
+      <div className="mt-3 flex h-7 items-center overflow-x-auto overflow-y-hidden">
         <Inspector slot={active} />
       </div>
 
