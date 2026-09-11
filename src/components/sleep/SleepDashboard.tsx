@@ -20,7 +20,7 @@ import type { SleepTakeaway } from '@/lib/takeaways';
  * night was, then how the week compares, then the thirty-night picture, then
  * what has been learned from it.
  *
- * Last night and the two averages are deliberately kept to a few lines each.
+ * Last night and the averages are deliberately kept to a few lines each.
  * They answer their question in one look and then get out of the way — the
  * height belongs to the thirty-night chart and the takeaways, which are the
  * two things here that are read rather than glanced at.
@@ -165,9 +165,9 @@ export function SleepDashboard({
   return (
     /**
      * Three columns on a desktop, so the chart sits in the middle of the page
-     * rather than in the middle of a column: last night and its two averages
-     * in the left rail, the thirty nights centred, the standing lessons in the
-     * right rail. Both rails carry short cards, which is what makes the
+     * rather than in the middle of a column: last night and its averages in the
+     * left rail, the thirty nights centred, the standing lessons in the right
+     * rail. Both rails carry short cards, which is what makes the
      * arrangement work — they are read at a glance, and neither is asked to
      * fill the chart's height.
      *
@@ -180,41 +180,36 @@ export function SleepDashboard({
     <div className="grid items-start gap-3 xl:grid-cols-[20rem_minmax(0,1fr)_20rem]">
       {/* `top` clears the sticky header. */}
       <div className="space-y-2 sm:space-y-3 xl:sticky xl:top-[4.75rem]">
+        <LastNightCard night={latest} onAddPeriod={onAdd} />
+
         {/* The averages are context for last night rather than headlines of
-            their own, so they sit beside it — two short tiles, not a row of
-            cards taking a band of the page to themselves. In the rail they go
-            under it; between `lg` and `xl` there is no rail and they sit to
-            its right; narrower still and they share a row beneath it. */}
-        <div className="grid gap-2 sm:gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] xl:grid-cols-1">
-          <LastNightCard night={latest} onAddPeriod={onAdd} />
-
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-1 lg:grid-rows-2">
-            <Stat
-              label="Last 7 nights"
-              value={summary.weekAverage !== null ? formatDuration(summary.weekAverage) : '—'}
-              hint="average per night"
-            />
-            <Stat
-              label="Trend"
-              value={summary.monthAverage !== null ? formatDuration(summary.monthAverage) : '—'}
-              hint={
-                summary.trendMinutes !== null ? (
-                  <span className="inline-flex items-center gap-1.5">
-                    <Trend minutes={summary.trendMinutes} />
-                    vs previous week
-                  </span>
-                ) : (
-                  '30-night average'
-                )
-              }
-            />
-          </div>
-        </div>
-
-        {/* When the night usually starts and ends, which the duration
-            averages above say nothing about: two people can both sleep 7h50m
-            and be on entirely different schedules. Same 30-night window. */}
-        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            their own, so they sit under it as one block of equal tiles: two
+            about how long the nights are, two about when they run. A single
+            grid keeps every tile the same width and the two rows aligned —
+            read across, then down. Four abreast where there is no rail. */}
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4 xl:grid-cols-2">
+          <Stat
+            label="Last 7 nights"
+            value={summary.weekAverage !== null ? formatDuration(summary.weekAverage) : '—'}
+            hint="average per night"
+          />
+          <Stat
+            label="Trend"
+            value={summary.monthAverage !== null ? formatDuration(summary.monthAverage) : '—'}
+            hint={
+              summary.trendMinutes !== null ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <Trend minutes={summary.trendMinutes} />
+                  vs previous week
+                </span>
+              ) : (
+                '30-night average'
+              )
+            }
+          />
+          {/* When the night usually starts and ends, which the duration
+              averages say nothing about: two people can both sleep 7h50m and
+              be on entirely different schedules. Same 30-night window. */}
           <Stat
             label="Usual bedtime"
             value={
