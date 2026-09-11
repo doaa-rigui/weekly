@@ -1,3 +1,15 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  /*
+   * The typeface is loaded in index.html; this is what makes it the default
+   * everywhere, and what keeps its thin weights from looking chalky on a
+   * light ground.
+   */
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}

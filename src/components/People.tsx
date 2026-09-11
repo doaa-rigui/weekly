@@ -46,7 +46,7 @@ export function PeopleAvatars({
           // Overlapped, so three avatars cost about the width of two.
           className={`${box} ${
             i > 0 ? '-ml-1' : ''
-          } flex items-center justify-center rounded-full font-bold uppercase leading-none text-white ring-1 ring-white/70`}
+          } flex items-center justify-center rounded-full font-bold uppercase leading-none text-white ring-1 ring-paper/70`}
           style={{ backgroundColor: person.color }}
         >
           {initialsOf(person.name)}
@@ -54,7 +54,7 @@ export function PeopleAvatars({
       ))}
       {extra > 0 && (
         <span
-          className={`${box} -ml-1 flex items-center justify-center rounded-full bg-slate-700 font-bold leading-none text-white ring-1 ring-white/70`}
+          className={`${box} -ml-1 flex items-center justify-center rounded-full bg-sage-700 font-bold leading-none text-white ring-1 ring-paper/70`}
         >
           +{extra}
         </span>
@@ -66,7 +66,7 @@ export function PeopleAvatars({
 /** One name as it appears in the edit panel: avatar, name, and a way off. */
 function PersonChip({ person, onRemove }: { person: Person; onRemove: () => void }) {
   return (
-    <span className="flex max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 py-1 pl-1 pr-1.5 text-xs font-medium text-slate-700">
+    <span className="flex max-w-full items-center gap-1.5 rounded-full border border-sage-200 bg-sage-50 py-1 pl-1 pr-1.5 text-xs font-medium text-sage-700">
       <span
         className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold uppercase leading-none text-white"
         style={{ backgroundColor: person.color }}
@@ -76,7 +76,7 @@ function PersonChip({ person, onRemove }: { person: Person; onRemove: () => void
       <span className="truncate">{person.name}</span>
       <button
         onClick={onRemove}
-        className="shrink-0 rounded-full p-0.5 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700"
+        className="shrink-0 rounded-full p-0.5 text-sage-400 transition-colors hover:bg-sage-200 hover:text-sage-700"
         aria-label={`Remove ${person.name} from this block`}
       >
         <X className="h-3 w-3" />
@@ -153,11 +153,11 @@ export function PeoplePicker({
   return (
     <div ref={rootRef} className="relative">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-sage-500">
           People
         </span>
         {chosen.length > 0 && (
-          <span className="text-xs font-medium text-slate-400">
+          <span className="text-xs font-medium text-sage-400">
             {chosen.length} tagged
           </span>
         )}
@@ -174,7 +174,7 @@ export function PeoplePicker({
         <button
           onClick={() => setOpen((prev) => !prev)}
           aria-expanded={open}
-          className="flex items-center gap-1.5 rounded-full border border-dashed border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-500 transition-colors hover:border-slate-400 hover:bg-slate-50 hover:text-slate-700"
+          className="flex items-center gap-1.5 rounded-full border border-dashed border-sage-300 px-2.5 py-1 text-xs font-medium text-sage-500 transition-colors hover:border-sage-400 hover:bg-sage-50 hover:text-sage-700"
         >
           <UserPlus className="h-3.5 w-3.5" />
           {chosen.length === 0 ? 'Tag someone' : 'Add'}
@@ -184,9 +184,9 @@ export function PeoplePicker({
       {open && (
         <div
           ref={panelRef}
-          className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg"
+          className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-2xl border border-sage-200 bg-paper/95 backdrop-blur-sm shadow-[0_2px_6px_rgba(40,48,40,0.06),0_20px_44px_-24px_rgba(40,48,40,0.4)]"
         >
-          <div className="border-b border-slate-100 p-1.5">
+          <div className="border-b border-sage-100 p-1.5">
             <input
               ref={inputRef}
               value={query}
@@ -209,7 +209,7 @@ export function PeoplePicker({
                   setQuery('');
                 }
               }}
-              className="w-full rounded-lg border border-slate-200 px-2.5 py-1.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-400"
+              className="w-full rounded-lg border border-sage-200 px-2.5 py-1.5 text-sm text-sage-900 outline-none placeholder:text-sage-400 focus:border-sage-400"
             />
           </div>
 
@@ -222,7 +222,7 @@ export function PeoplePicker({
                     onClick={() => toggle(person.id)}
                     role="menuitemcheckbox"
                     aria-checked={isSelected}
-                    className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left transition-colors hover:bg-slate-50"
+                    className="flex min-w-0 flex-1 items-center gap-2 px-2 py-1.5 text-left transition-colors hover:bg-sage-50"
                   >
                     <span
                       className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-bold uppercase leading-none text-white"
@@ -230,8 +230,8 @@ export function PeoplePicker({
                     >
                       {initialsOf(person.name)}
                     </span>
-                    <span className="truncate text-sm text-slate-700">{person.name}</span>
-                    {isSelected && <Check className="ml-auto h-4 w-4 shrink-0 text-slate-900" />}
+                    <span className="truncate text-sm text-sage-700">{person.name}</span>
+                    {isSelected && <Check className="ml-auto h-4 w-4 shrink-0 text-sage-900" />}
                   </button>
                   {/*
                     Deleting is for fixing a typo in the list, so it stays
@@ -241,7 +241,7 @@ export function PeoplePicker({
                     onClick={() => remove(person.id)}
                     title={`Remove ${person.name} from your people`}
                     aria-label={`Remove ${person.name} from your people`}
-                    className="mr-1 rounded-md p-1.5 text-slate-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
+                    className="mr-1 rounded-md p-1.5 text-sage-300 opacity-0 transition-opacity hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -250,7 +250,7 @@ export function PeoplePicker({
             })}
 
             {matches.length === 0 && !canCreate && (
-              <li className="px-3 py-2 text-xs text-slate-400">
+              <li className="px-3 py-2 text-xs text-sage-400">
                 No one on your list yet — type a name to add them.
               </li>
             )}
@@ -260,7 +260,7 @@ export function PeoplePicker({
             <button
               onClick={addTyped}
               disabled={adding}
-              className="flex w-full items-center gap-2 border-t border-slate-100 px-2.5 py-2 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-60"
+              className="flex w-full items-center gap-2 border-t border-sage-100 px-2.5 py-2 text-sm font-medium text-sage-700 transition-colors hover:bg-sage-50 disabled:opacity-60"
             >
               {adding ? (
                 <Loader2 className="h-4 w-4 animate-spin" />

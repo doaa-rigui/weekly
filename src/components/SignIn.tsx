@@ -50,28 +50,28 @@ export function SignIn() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
+    <div className="flex min-h-screen items-center justify-center bg-sage-100 bg-garden-glow bg-no-repeat px-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-slate-900 text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-moss-500/15 text-moss-600">
             <CalendarDays className="h-6 w-6" />
           </div>
-          <h1 className="mt-3 text-xl font-semibold tracking-tight text-slate-900">
+          <h1 className="mt-3 text-xl font-semibold tracking-tight text-sage-900">
             Weekly Planner
           </h1>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-sage-500">
             {mode === 'signin' ? 'Sign in to open your week' : 'Create an account to start'}
           </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+          className="space-y-4 rounded-2xl border border-sage-200 bg-paper/95 p-6 backdrop-blur-sm shadow-[0_2px_6px_rgba(40,48,40,0.06),0_20px_44px_-24px_rgba(40,48,40,0.4)]"
         >
           <div>
             <label
               htmlFor="email"
-              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500"
+              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-sage-500"
             >
               Email
             </label>
@@ -83,7 +83,7 @@ export function SignIn() {
               required
               autoComplete="email"
               autoFocus
-              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+              className="w-full rounded-lg border border-sage-200 px-3 py-2.5 text-sm text-sage-900 outline-none transition-colors placeholder:text-sage-400 focus:border-sage-400 focus:ring-2 focus:ring-moss-500/15"
               placeholder="you@example.com"
             />
           </div>
@@ -91,7 +91,7 @@ export function SignIn() {
           <div>
             <label
               htmlFor="password"
-              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500"
+              className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-sage-500"
             >
               Password
             </label>
@@ -103,7 +103,7 @@ export function SignIn() {
               required
               minLength={6}
               autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+              className="w-full rounded-lg border border-sage-200 px-3 py-2.5 text-sm text-sage-900 outline-none transition-colors placeholder:text-sage-400 focus:border-sage-400 focus:ring-2 focus:ring-moss-500/15"
               placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
             />
           </div>
@@ -122,7 +122,7 @@ export function SignIn() {
           <button
             type="submit"
             disabled={pending}
-            className="flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-900"
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-moss-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-moss-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-moss-600"
           >
             {pending && <Loader2 className="h-4 w-4 animate-spin" />}
             {pending
@@ -135,11 +135,11 @@ export function SignIn() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-sm text-slate-500">
+        <p className="mt-4 text-center text-sm text-sage-500">
           {mode === 'signin' ? "Don't have an account?" : 'Already have an account?'}{' '}
           <button
             onClick={switchMode}
-            className="font-semibold text-slate-900 underline-offset-2 hover:underline"
+            className="font-semibold text-sage-900 underline-offset-2 hover:underline"
           >
             {mode === 'signin' ? 'Create one' : 'Sign in'}
           </button>

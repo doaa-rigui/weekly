@@ -298,6 +298,14 @@ export function Planner({
   const dayLabels = useMemo(() => dayLabelsFor(dayCount), [dayCount]);
   const weeks = Math.ceil(dayCount / 7);
   const todayIndex = isWeekBased(dayCount) && weekdayIndex < dayCount ? weekdayIndex : -1;
+  /**
+   * Saturday and Sunday, tinted a shade deeper down the whole column — the
+   * same trick the sleep timeline plays on weekend nights. A week you can see
+   * the shape of is easier to read than seven identical columns, and the
+   * weekend is the edge everything else is positioned against. Only on a
+   * week-based planner: "day 6 of 10" is not a Saturday.
+   */
+  const isWeekendColumn = (idx: number) => isWeekBased(dayCount) && idx % 7 >= 5;
 
   const dayTagStore = useDayTags(userId, plannerId);
   // Which day's tag menu is open, so its header cell can outrank the cells
@@ -654,11 +662,16 @@ export function Planner({
   const selDraft = selection ? selectionToDraft(selection) : null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-sage-100 bg-garden-glow bg-no-repeat">
       <header
         ref={appBarRef}
-        className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md"
+        className="sticky top-0 z-30 border-b border-sage-200/80 bg-paper/75 backdrop-blur-xl"
       >
+        {/* A lit edge along the bottom of the bar, brightest under the title.
+            It is the one piece of pure decoration in the app: it gives the
+            header a horizon instead of a hairline, and it is what makes the
+            page look switched on. */}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-moss-400/0 via-moss-400/70 to-moss-400/0" />
         {/* Deliberately the sleep tracker's bar, measurement for measurement:
             same height, same gaps, same span, and the same three things on
             the right in the same order. The two halves of the app look
@@ -666,12 +679,15 @@ export function Planner({
             across a switch — if it moves, the whole page feels like it did. */}
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6 xl:max-w-[1600px]">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
+            {/* Solid moss with its own cast shadow, rather than a tinted
+                square: at 36px it is the only mark in the bar, so it may as
+                well carry the colour the whole app is keyed to. */}
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-moss-400 to-moss-700 text-white shadow-[0_6px_16px_-6px_rgba(74,106,80,0.9)]">
               <CalendarDays className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <PlannerSwitcher store={plannerStore} />
-              <p className="truncate text-xs text-slate-500">
+              <p className="truncate text-xs text-sage-500">
                 ✨ Dodo & Marie's reusable week template ✨
               </p>
             </div>
@@ -691,7 +707,7 @@ export function Planner({
             <button
               onClick={() => setView('sleep')}
               title="Open the sleep tracker"
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+              className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 px-3 py-1.5 text-xs font-medium text-sage-600 transition-colors hover:bg-sage-100"
             >
               <MoonStar className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Sleep</span>
@@ -702,7 +718,7 @@ export function Planner({
               onClick={signOut}
               title={`Sign out${user?.email ? ` (${user.email})` : ''}`}
               aria-label="Sign out"
-              className="rounded-full border border-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+              className="rounded-full border border-sage-200 p-2 text-sage-500 transition-colors hover:bg-sage-100 hover:text-sage-700"
             >
               <LogOut className="h-3.5 w-3.5" />
             </button>
@@ -747,7 +763,7 @@ export function Planner({
           to stick under the app bar.
         */}
         <div
-          className="rounded-2xl border border-slate-200 bg-white shadow-sm"
+          className="rounded-2xl border border-sage-200 bg-paper/90 shadow-[0_1px_2px_rgba(40,48,40,0.05),0_18px_40px_-28px_rgba(40,48,40,0.35)] backdrop-blur-sm"
           style={{ minWidth: GUTTER_WIDTH + dayCount * MIN_DAY_COLUMN_WIDTH }}
         >
           {/*
@@ -772,7 +788,7 @@ export function Planner({
             */}
             <div
               data-header
-              className="sticky rounded-tl-2xl border-b border-slate-200 bg-slate-50"
+              className="sticky rounded-tl-2xl border-b border-sage-200 bg-sage-50"
               style={{
                 gridColumn: '1',
                 gridRow: '1',
@@ -796,7 +812,7 @@ export function Planner({
               className="pointer-events-none relative"
               style={{ gridColumn: '1', gridRow: '1', zIndex: 26 }}
             >
-              <span className="absolute -bottom-0.5 right-2 text-[11px] font-medium text-slate-400">
+              <span className="absolute -bottom-0.5 right-2 text-[11px] font-medium text-sage-400">
                 {formatHour(0)}
               </span>
             </div>
@@ -807,9 +823,15 @@ export function Planner({
                   key={idx}
                   data-header
                   aria-current={isToday ? 'date' : undefined}
-                  className={`sticky flex flex-col items-center justify-center gap-1 border-b border-l border-slate-200 ${
+                  className={`sticky flex flex-col items-center justify-center gap-1 border-b border-l border-sage-200 ${
                     idx === dayCount - 1 ? 'rounded-tr-2xl' : ''
-                  } ${isToday ? 'bg-blue-50' : 'bg-slate-50'}`}
+                  } ${
+                    isToday
+                      ? 'bg-moss-100'
+                      : isWeekendColumn(idx)
+                        ? 'bg-sage-100'
+                        : 'bg-sage-50'
+                  }`}
                   style={{
                     gridColumn: `${idx + 2}`,
                     gridRow: '1',
@@ -822,15 +844,15 @@ export function Planner({
                       title={isToday ? `${label.full} · today` : label.full}
                       className={`text-[11px] font-semibold uppercase tracking-wider sm:text-xs ${
                         isToday
-                          ? 'rounded-full bg-blue-600 px-2 py-0.5 text-white'
-                          : 'text-slate-600'
+                          ? 'rounded-full bg-gradient-to-br from-moss-400 to-moss-700 px-2.5 py-0.5 text-white shadow-[0_4px_12px_-4px_rgba(74,106,80,0.95)]'
+                          : 'text-sage-600'
                       }`}
                     >
                       {label.short}
                     </span>
                     {/* Which week of a longer planner this column belongs to. */}
                     {weeks > 1 && (
-                      <span className="text-[10px] font-semibold text-slate-400">W{label.week}</span>
+                      <span className="text-[10px] font-semibold text-sage-400">W{label.week}</span>
                     )}
                   </span>
                   <DayTagMenu
@@ -850,6 +872,7 @@ export function Planner({
                 hour={hour}
                 dayCount={dayCount}
                 todayIndex={todayIndex}
+                isWeekendColumn={isWeekendColumn}
                 isLastHour={idx === HOURS.length - 1}
               />
             ))}
@@ -861,17 +884,17 @@ export function Planner({
             {selGrid && selDraft && (
               <div
                 // Above the blocks, but under the sticky header it may scroll past.
-                className="pointer-events-none z-20 m-0.5 overflow-hidden rounded-md border-2 border-blue-500 bg-blue-400/20 px-1 py-0.5"
+                className="pointer-events-none z-20 m-0.5 overflow-hidden rounded-xl border-2 border-dashed border-moss-500 bg-moss-400/25 px-1 py-0.5 shadow-[0_0_0_4px_rgba(116,160,123,0.15)]"
                 style={{
                   gridColumn: `${selGrid.colStart} / ${selGrid.colEnd}`,
                   gridRow: `${selGrid.rowStart} / ${selGrid.rowEnd}`,
                 }}
               >
-                <span className="text-[11px] font-semibold leading-tight text-blue-800">
+                <span className="text-[11px] font-semibold leading-tight text-moss-800">
                   {formatTime(selDraft.start_minute)} – {formatTime(selDraft.end_minute)}
                 </span>
                 {selDraft.days.length > 1 && (
-                  <span className="ml-1 text-[11px] font-medium leading-tight text-blue-700">
+                  <span className="ml-1 text-[11px] font-medium leading-tight text-moss-700">
                     · {selDraft.days.length} days
                   </span>
                 )}
@@ -900,14 +923,22 @@ export function Planner({
                     if (suppressBlockClickRef.current) return;
                     setEditingSeriesId(b.series_id);
                   }}
-                  className={`group relative my-0.5 flex min-w-0 flex-col rounded-lg text-left shadow-sm transition-all hover:shadow-md ${
+                  /*
+                   * The block is the only object in the app the user made
+                   * themselves, so it gets the strongest treatment: a real
+                   * cast shadow in the page's own green-black rather than a
+                   * grey one, a lift on hover, and a diagonal sheen (the
+                   * overlay below) that keeps a flat fill from reading as a
+                   * coloured rectangle.
+                   */
+                  className={`group relative my-0.5 flex min-w-0 flex-col rounded-xl text-left shadow-[0_1px_2px_rgba(40,48,40,0.18),0_6px_14px_-8px_rgba(40,48,40,0.5)] transition-all duration-150 hover:shadow-[0_2px_4px_rgba(40,48,40,0.2),0_14px_26px_-12px_rgba(40,48,40,0.6)] ${
                     isCompact ? 'p-0.5' : 'p-2'
                   } ${canOverflowLabel ? 'overflow-visible' : 'overflow-hidden'} ${
                     editingSeriesId === b.series_id
-                      ? 'ring-2 ring-slate-900 ring-offset-1'
-                      : `hover:scale-[1.01] ${
+                      ? 'ring-2 ring-moss-600 ring-offset-2 ring-offset-paper'
+                      : `hover:-translate-y-px hover:scale-[1.015] ${
                           // A rim against whatever it is sitting on top of.
-                          col > 0 ? 'ring-2 ring-white' : ''
+                          col > 0 ? 'ring-2 ring-paper' : ''
                         }`
                   }`}
                   style={{
@@ -923,6 +954,11 @@ export function Planner({
                     color: b.text_color ?? DEFAULT_TEXT_COLOR,
                   }}
                 >
+                  {/* The sheen. Light from the top left, the same corner the
+                      page's own glow comes from, so a block looks lit rather
+                      than filled. Behind everything and inert to the pointer;
+                      it inherits the block's rounding. */}
+                  <span className="pointer-events-none absolute inset-0 rounded-[inherit] bg-gradient-to-br from-white/25 via-white/5 to-black/15" />
                   <span
                     className={`flex items-center gap-1 truncate font-semibold leading-tight ${
                       isCompact
@@ -932,7 +968,7 @@ export function Planner({
                           `absolute left-1 top-1 z-10 rounded bg-inherit px-1 text-[10px] ${
                             canOverflowLabel ? 'max-w-[calc(100%+160px)]' : 'max-w-[calc(100%-8px)]'
                           }`
-                        : 'text-xs sm:text-sm'
+                        : 'relative text-xs sm:text-sm'
                     }`}
                   >
                     {repeatCount > 1 && <Repeat className="h-3 w-3 shrink-0 opacity-80" />}
@@ -943,7 +979,7 @@ export function Planner({
                     )}
                   </span>
                   {!isCompact && (
-                    <span className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-tight opacity-80">
+                    <span className="relative mt-0.5 flex items-center gap-1.5 text-[11px] leading-tight opacity-80">
                       <span className="truncate">
                         {formatTime(b.start_minute)} – {formatTime(b.end_minute)}
                       </span>
@@ -1003,7 +1039,7 @@ function ClearWeekButton({
         onClick={onAsk}
         disabled={blockCount === 0}
         title={blockCount === 0 ? 'This planner is already empty' : 'Delete every block'}
-        className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-transparent disabled:hover:text-slate-600"
+        className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 px-3 py-1.5 text-xs font-medium text-sage-600 transition-colors hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-sage-200 disabled:hover:bg-transparent disabled:hover:text-sage-600"
       >
         <Trash2 className="h-3.5 w-3.5" />
         Clear
@@ -1081,8 +1117,14 @@ function NowMarker({ minute, dayIndex }: { minute: number; dayIndex: number }) {
             role="separator"
             aria-label={`Current time, ${formatTime(minute)}`}
           >
-            <span className="-ml-1 h-2.5 w-2.5 shrink-0 rounded-full bg-red-500 ring-2 ring-white" />
-            <span className="h-0.5 flex-1 bg-red-500" />
+            {/* The only thing on the page that moves on its own. The halo
+                pulses under the dot rather than the dot itself, so the line
+                stays exactly on the minute it marks. */}
+            <span className="relative -ml-1 flex h-2.5 w-2.5 shrink-0 items-center justify-center">
+              <span className="absolute h-4 w-4 animate-ping rounded-full bg-red-500/30" />
+              <span className="relative h-2.5 w-2.5 rounded-full bg-red-500 ring-2 ring-paper" />
+            </span>
+            <span className="h-0.5 flex-1 bg-gradient-to-r from-red-500 to-red-500/35" />
           </div>
         </div>
       )}
@@ -1094,11 +1136,13 @@ function HourRow({
   hour,
   dayCount,
   todayIndex,
+  isWeekendColumn,
   isLastHour,
 }: {
   hour: number;
   dayCount: number;
   todayIndex: number;
+  isWeekendColumn: (idx: number) => boolean;
   isLastHour: boolean;
 }) {
   const slotsInHour = HOUR_HEIGHT / SLOT_HEIGHT; // 4
@@ -1107,7 +1151,7 @@ function HourRow({
     <>
       {/* Time label spans the whole hour */}
       <div
-        className={`relative border-b border-slate-100 bg-slate-50/40 ${
+        className={`relative border-b border-sage-100 bg-sage-50/40 ${
           isLastHour ? 'rounded-bl-2xl' : ''
         }`}
         style={{
@@ -1120,7 +1164,7 @@ function HourRow({
           the grid body, so that one is drawn up in the header row instead.
         */}
         {hour > 0 && (
-          <span className="absolute -top-2.5 right-2 text-[11px] font-medium text-slate-400">
+          <span className="absolute -top-2.5 right-2 text-[11px] font-medium text-sage-400">
             {formatHour(hour)}
           </span>
         )}
@@ -1130,7 +1174,7 @@ function HourRow({
           its last marking.
         */}
         {isLastHour && (
-          <span className="absolute bottom-0.5 right-2 text-[11px] font-medium text-slate-400">
+          <span className="absolute bottom-0.5 right-2 text-[11px] font-medium text-sage-400">
             {formatHour(0)}
           </span>
         )}
@@ -1143,6 +1187,7 @@ function HourRow({
           baseSlot={baseSlot}
           slotsInHour={slotsInHour}
           isToday={dayIdx === todayIndex}
+          isWeekend={isWeekendColumn(dayIdx)}
           roundBottomRight={isLastHour && dayIdx === dayCount - 1}
         />
       ))}
@@ -1155,12 +1200,14 @@ function SlotCells({
   baseSlot,
   slotsInHour,
   isToday,
+  isWeekend,
   roundBottomRight,
 }: {
   dayIdx: number;
   baseSlot: number;
   slotsInHour: number;
   isToday: boolean;
+  isWeekend: boolean;
   roundBottomRight: boolean;
 }) {
   return (
@@ -1173,12 +1220,18 @@ function SlotCells({
             key={slot}
             className={`relative ${isHourBoundary ? 'border-t' : ''} ${
               q < slotsInHour - 1 ? 'border-dashed' : ''
-            } border-l border-slate-100 transition-colors ${
+            } border-l border-sage-100 transition-colors ${
               roundBottomRight && q === slotsInHour - 1 ? 'rounded-br-2xl' : ''
-            } ${isToday ? 'bg-blue-50/50 hover:bg-blue-100/60' : 'hover:bg-slate-50/70'}`}
+            } ${
+              isToday
+                ? 'bg-moss-50/60 hover:bg-moss-100/70'
+                : isWeekend
+                  ? 'bg-sage-100/45 hover:bg-sage-100/80'
+                  : 'hover:bg-sage-50/70'
+            }`}
             style={{ gridColumn: `${dayIdx + 2}`, gridRow: `${slot + 2}` }}
           >
-            {!isHourBoundary && <div className="absolute left-0 top-0 h-px w-1.5 bg-slate-200" />}
+            {!isHourBoundary && <div className="absolute left-0 top-0 h-px w-1.5 bg-sage-200" />}
           </div>
         );
       })}

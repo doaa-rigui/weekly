@@ -31,16 +31,21 @@ export const DAY_TAG_LABEL_MAX = 24;
  * Pill colours for a planner's day tags, handed out in order as they are
  * added. Mid-weight, so white text sits on them and they don't shout over the
  * blocks in the grid.
+ *
+ * Drawn from the garden the rest of the app is painted in: the hues are still
+ * spread right around the wheel so eight tags stay tellable apart, but each
+ * one is pulled towards the page's green-grey instead of running at full
+ * saturation. A pure `#dc2626` on this paper reads as an alarm.
  */
 export const DAY_TAG_PALETTE = [
-  '#059669',
-  '#4f46e5',
-  '#d97706',
-  '#0891b2',
-  '#db2777',
-  '#65a30d',
-  '#7c3aed',
-  '#dc2626',
+  '#5c7f63',
+  '#3f7d78',
+  '#3d6b96',
+  '#6b5f9e',
+  '#8e5486',
+  '#a9556a',
+  '#6f7d33',
+  '#2f7350',
 ] as const;
 
 /** Lower bound, upper bound and default for how many days a planner runs. */
@@ -147,29 +152,38 @@ export const RECENT_COLOR_LIMIT = 5;
 
 export const DEFAULT_TEXT_COLOR = '#ffffff';
 
-/** Readable label colours: light ones for dark blocks, dark ones for pale blocks. */
-export const TEXT_PALETTE = ['#ffffff', '#f1f5f9', '#cbd5e1', '#64748b', '#1e293b', '#000000'];
+/**
+ * Readable label colours: light ones for dark blocks, dark ones for pale
+ * blocks. The greys in between are the page's own sage ramp, so a label never
+ * introduces a neutral the rest of the planner doesn't use.
+ */
+export const TEXT_PALETTE = ['#ffffff', '#f4f6f2', '#d8e0d3', '#6c7d68', '#354034', '#000000'];
 
 /**
  * One row of six in the picker, so the edit panel stays short enough to fit on
  * screen. Hues are spread wide apart to keep adjacent blocks distinguishable;
  * anything else is reachable through the custom picker.
+ *
+ * Garden weights rather than the primaries: every one is dark enough to carry
+ * white text, and none is more saturated than the moss the app accents with —
+ * a grid of them should look like a planted week, not a paint box.
  */
-export const PALETTE = ['#2563eb', '#0891b2', '#059669', '#d97706', '#dc2626', '#7c3aed'];
+export const PALETTE = ['#4f7157', '#3b6f6b', '#3f6491', '#6b5183', '#9c4f61', '#6f7d33'];
 
 /**
  * Avatar colours for tagged people, handed out in order as people are added so
- * two names in the same block rarely look alike. Dark enough for white text.
+ * two names in the same block rarely look alike. A step darker than the block
+ * palette they sit on top of, and dark enough for white initials.
  */
 export const PEOPLE_PALETTE = [
-  '#0f766e',
-  '#b45309',
-  '#9333ea',
-  '#be123c',
-  '#1d4ed8',
-  '#4d7c0f',
-  '#c2410c',
-  '#0369a1',
+  '#3f6b52',
+  '#2f6b66',
+  '#34608a',
+  '#5a5290',
+  '#7a4a76',
+  '#8f4757',
+  '#667a2e',
+  '#2b5f43',
 ] as const;
 
 /** Longest name the picker will store, so avatars and chips stay in shape. */

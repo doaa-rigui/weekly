@@ -45,13 +45,13 @@ function Swatch({
     <button
       onClick={onSelect}
       className={`relative flex h-8 items-center justify-center rounded-lg border transition-transform hover:scale-105 ${
-        selected ? 'ring-2 ring-slate-900 ring-offset-1' : ''
-      } ${light ? 'border-slate-200' : 'border-transparent'}`}
+        selected ? 'ring-2 ring-sage-900 ring-offset-1' : ''
+      } ${light ? 'border-sage-200' : 'border-transparent'}`}
       style={{ backgroundColor: color }}
       aria-label={`Select color ${color}`}
       aria-pressed={selected}
     >
-      {selected && <Check className={`h-4 w-4 ${light ? 'text-slate-900' : 'text-white'}`} />}
+      {selected && <Check className={`h-4 w-4 ${light ? 'text-sage-900' : 'text-white'}`} />}
     </button>
   );
 }
@@ -77,16 +77,16 @@ function ColorField({
       {/* The custom picker rides on the label row rather than below the
           swatches, which keeps the whole panel within one screen. */}
       <div className="mb-2 flex items-center justify-between gap-3">
-        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+        <span className="text-xs font-semibold uppercase tracking-wider text-sage-500">
           {label}
         </span>
-        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-500 transition-colors hover:text-slate-900">
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-sage-500 transition-colors hover:text-sage-900">
           Custom
           <input
             type="color"
             value={value}
             onChange={(e) => onChange(e.target.value)}
-            className="h-6 w-8 cursor-pointer rounded border border-slate-200 bg-white p-0.5"
+            className="h-6 w-8 cursor-pointer rounded border border-sage-200 bg-paper p-0.5"
             aria-label={`${label} custom picker`}
           />
         </label>
@@ -191,11 +191,11 @@ export function EditPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 backdrop-blur-sm sm:items-center sm:p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-sage-900/40 backdrop-blur-sm sm:items-center sm:p-4"
       onClick={handleClose}
     >
       <div
-        className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-white shadow-2xl sm:rounded-2xl"
+        className="flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl border border-sage-200 bg-paper/95 backdrop-blur-md shadow-[0_-4px_40px_rgba(40,48,40,0.25)] sm:rounded-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Preview header — shows the block exactly as it will be drawn */}
@@ -230,7 +230,7 @@ export function EditPanel({
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-4">
           {/* Title */}
           <div>
-            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+            <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-sage-500">
               Title
             </label>
             <input
@@ -239,7 +239,7 @@ export function EditPanel({
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g. Morning Workout"
               autoFocus
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+              className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sm text-sage-900 outline-none transition-colors placeholder:text-sage-400 focus:border-sage-400 focus:ring-2 focus:ring-moss-500/15"
               onKeyDown={(e) => e.key === 'Enter' && handleSave()}
             />
           </div>
@@ -265,11 +265,11 @@ export function EditPanel({
           {/* Repeat days */}
           <div>
             <div className="mb-2 flex items-center justify-between">
-              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <label className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-sage-500">
                 <Repeat className="h-3.5 w-3.5" />
                 Repeats on
               </label>
-              <span className="text-xs font-medium text-slate-400">
+              <span className="text-xs font-medium text-sage-400">
                 {summarizeDays(days, dayLabels)}
               </span>
             </div>
@@ -285,8 +285,8 @@ export function EditPanel({
                     title={label.full}
                     className={`rounded-lg border py-1.5 text-xs font-semibold transition-colors ${
                       active
-                        ? 'border-slate-900 bg-slate-900 text-white'
-                        : 'border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'
+                        ? 'border-moss-600 bg-moss-600 text-white'
+                        : 'border-sage-200 text-sage-500 hover:border-sage-300 hover:bg-sage-50'
                     }`}
                   >
                     {label.short}
@@ -299,14 +299,14 @@ export function EditPanel({
           {/* Time range: hour + minute */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-sage-500">
                 Start time
               </label>
               <div className="flex gap-2">
                 <select
                   value={startH}
                   onChange={(e) => setStartH(Number(e.target.value))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sm text-sage-900 outline-none focus:border-sage-400 focus:ring-2 focus:ring-moss-500/15"
                 >
                   {HOURS_24.map((h) => (
                     <option key={h} value={h}>
@@ -317,7 +317,7 @@ export function EditPanel({
                 <select
                   value={startM}
                   onChange={(e) => setStartM(Number(e.target.value))}
-                  className="w-20 rounded-lg border border-slate-200 px-2 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-20 rounded-lg border border-sage-200 px-2 py-2 text-sm text-sage-900 outline-none focus:border-sage-400 focus:ring-2 focus:ring-moss-500/15"
                 >
                   {MINUTES.map((m) => (
                     <option key={m} value={m}>
@@ -328,14 +328,14 @@ export function EditPanel({
               </div>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-slate-500">
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-sage-500">
                 End time
               </label>
               <div className="flex gap-2">
                 <select
                   value={endH}
                   onChange={(e) => setEndH(Number(e.target.value))}
-                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-full rounded-lg border border-sage-200 px-3 py-2 text-sm text-sage-900 outline-none focus:border-sage-400 focus:ring-2 focus:ring-moss-500/15"
                 >
                   {HOURS_24.map((h) => (
                     <option key={h} value={h}>
@@ -346,7 +346,7 @@ export function EditPanel({
                 <select
                   value={endM}
                   onChange={(e) => setEndM(Number(e.target.value))}
-                  className="w-20 rounded-lg border border-slate-200 px-2 py-2 text-sm text-slate-900 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-900/10"
+                  className="w-20 rounded-lg border border-sage-200 px-2 py-2 text-sm text-sage-900 outline-none focus:border-sage-400 focus:ring-2 focus:ring-moss-500/15"
                 >
                   {MINUTES.map((m) => (
                     <option key={m} value={m}>
@@ -371,7 +371,7 @@ export function EditPanel({
         </div>
 
         {/* Actions */}
-        <div className="flex shrink-0 items-center justify-between border-t border-slate-100 px-6 py-3">
+        <div className="flex shrink-0 items-center justify-between border-t border-sage-100 px-6 py-3">
           <div>
             {isEditing && (
               <button
@@ -392,14 +392,14 @@ export function EditPanel({
             <button
               onClick={handleClose}
               disabled={busy}
-              className="rounded-lg px-4 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+              className="rounded-lg px-4 py-2 text-sm font-medium text-sage-600 transition-colors hover:bg-sage-100 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
             >
               Cancel
             </button>
             <button
               onClick={handleSave}
               disabled={endInvalid || noDays || busy}
-              className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-900"
+              className="flex items-center gap-1.5 rounded-lg bg-moss-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-moss-500 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-moss-600"
             >
               {pending === 'save' && <Loader2 className="h-4 w-4 animate-spin" />}
               {pending === 'save' ? 'Saving…' : isEditing ? 'Save changes' : 'Add block'}
