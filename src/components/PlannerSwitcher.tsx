@@ -68,9 +68,16 @@ export function PlannerSwitcher({ store }: { store: PlannerStore }) {
         aria-haspopup="menu"
         aria-expanded={open}
         title="Switch planner"
-        className="group -ml-1.5 flex max-w-[60vw] items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-left transition-colors hover:bg-slate-100 sm:max-w-none"
+        /* The negative margins cancel the padding: the hover pill still has
+           room around the name, but the button occupies exactly the height of
+           the text inside it — so the title and the subtitle under it sit
+           where the sleep tracker's plain heading puts them. */
+        className="group -mx-1.5 -my-0.5 flex max-w-[60vw] items-center gap-1.5 rounded-lg px-1.5 py-0.5 text-left transition-colors hover:bg-slate-100 sm:max-w-none"
       >
-        <h1 className="truncate text-lg font-semibold tracking-tight text-slate-900">
+        {/* `text-base`, matching the sleep tracker's title: the bar is the one
+            thing that stays put across a switch between the two halves, so
+            its type sizes are held in common. */}
+        <h1 className="truncate text-base font-semibold tracking-tight text-slate-900">
           {active?.name ?? 'Weekly Planner'}
         </h1>
         <ChevronDown

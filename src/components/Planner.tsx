@@ -38,7 +38,7 @@ import { EditPanel } from './EditPanel';
 import { PeopleAvatars } from './People';
 import { NewPlannerButton, PlannerSwitcher } from './PlannerSwitcher';
 import { useView } from '@/lib/view';
-import { CalendarDays, Loader2, LogOut, MoonStar, Plus, Repeat, Trash2, X } from 'lucide-react';
+import { CalendarDays, Loader2, LogOut, MoonStar, Repeat, Trash2, X } from 'lucide-react';
 
 /** A drag in progress: an anchor cell plus wherever the pointer is now. */
 type Selection = {
@@ -659,9 +659,14 @@ export function Planner({
         ref={appBarRef}
         className="sticky top-0 z-30 border-b border-slate-200 bg-white/80 backdrop-blur-md"
       >
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
+        {/* Deliberately the sleep tracker's bar, measurement for measurement:
+            same height, same gaps, same span, and the same three things on
+            the right in the same order. The two halves of the app look
+            nothing alike otherwise, and the bar is what the eye holds on to
+            across a switch — if it moves, the whole page feels like it did. */}
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3.5 sm:px-6 xl:max-w-[1600px]">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white">
               <CalendarDays className="h-5 w-5" />
             </div>
             <div className="min-w-0">
@@ -672,10 +677,6 @@ export function Planner({
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <div className="hidden items-center gap-1.5 rounded-full bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-600 lg:inline-flex">
-              <Plus className="h-3.5 w-3.5" />
-              Drag down to set the time, across to repeat it
-            </div>
             <NewPlannerButton onCreate={plannerStore.create} />
             <ClearWeekButton
               blockCount={blocks.length}
@@ -693,18 +694,17 @@ export function Planner({
               className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
             >
               <MoonStar className="h-3.5 w-3.5" />
-              Sleep
+              <span className="hidden sm:inline">Sleep</span>
             </button>
-            <span className="hidden max-w-[16ch] truncate text-xs text-slate-400 xl:inline">
-              {user?.email}
-            </span>
+            {/* Icon only, like the tracker's: the account it signs out of is
+                named in the tooltip, which is where it was already read. */}
             <button
               onClick={signOut}
               title={`Sign out${user?.email ? ` (${user.email})` : ''}`}
-              className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100"
+              aria-label="Sign out"
+              className="rounded-full border border-slate-200 p-2 text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
             >
               <LogOut className="h-3.5 w-3.5" />
-              Sign out
             </button>
           </div>
         </div>
