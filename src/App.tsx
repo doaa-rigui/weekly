@@ -1,5 +1,6 @@
 import { Planner } from '@/components/Planner';
 import { SignIn } from '@/components/SignIn';
+import { HabitsApp } from '@/components/habits/HabitsApp';
 import { SleepApp } from '@/components/sleep/SleepApp';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { ViewProvider, useView } from '@/lib/view';
@@ -65,6 +66,8 @@ function Gate() {
   // Keyed by user so switching accounts remounts with a clean slate rather
   // than showing the previous account's data until the refetch lands.
   switch (view) {
+    case 'habits':
+      return <HabitsApp key={user.id} userId={user.id} />;
     case 'sleep':
       return <SleepApp key={user.id} userId={user.id} />;
     case 'planner':

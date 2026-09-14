@@ -167,7 +167,46 @@ CREATE TABLE IF NOT EXISTS sleep_takeaways (
 CREATE INDEX IF NOT EXISTS sleep_takeaways_user_id_created_at_idx
   ON sleep_takeaways (user_id, created_at DESC);
 
--- 8. Security ---------------------------------------------------------------
+-- 8. Habits -----------------------------------------------------------------
+-- The habit tracker. A recurrence is a jsonb value rather than a set of
+-- columns, so a new kind of schedule costs no migration; see
+-- supabase/migrations/20260914120000_create_habits.sql for the shapes.
+
+CREATE TABLE IF NOT EXISTS habits (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  name text NOT NULL,
+  icon text NOT NULL DEFAULT 'Sparkles',
+  color text NOT NULL DEFAULT '#7073b5',
+  frequency jsonb NOT NULL DEFAULT '{"kind":"weekly","weekdays":[0,1,2,3,4,5,6]}'::jsonb,
+  anchor_date date NOT NULL DEFAULT CURRENT_DATE,
+  sort_order int NOT NULL DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  CONSTRAINT habits_name_not_blank CHECK (length(btrim(name)) > 0)
+);
+
+CREATE INDEX IF NOT EXISTS habits_user_id_sort_order_idx
+  ON habits (user_id, sort_order, created_at);
+
+-- 9. Habit entries ----------------------------------------------------------
+-- One answer per habit per day. No row means the day is still pending: an
+-- "undone" is something the user said, not the absence of a "done".
+
+CREATE TABLE IF NOT EXISTS habit_entries (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL DEFAULT auth.uid() REFERENCES auth.users (id) ON DELETE CASCADE,
+  habit_id uuid NOT NULL REFERENCES habits (id) ON DELETE CASCADE,
+  on_date date NOT NULL,
+  status text NOT NULL CHECK (status IN ('done', 'skipped', 'undone')),
+  note text,
+  updated_at timestamptz DEFAULT now(),
+  CONSTRAINT habit_entries_one_per_day UNIQUE (habit_id, on_date)
+);
+
+CREATE INDEX IF NOT EXISTS habit_entries_user_id_on_date_idx
+  ON habit_entries (user_id, on_date DESC);
+
+-- 10. Security ---------------------------------------------------------------
 -- Signed in, and only your own rows. The anon role gets nothing.
 
 ALTER TABLE planners       ENABLE ROW LEVEL SECURITY;
@@ -178,6 +217,8 @@ ALTER TABLE day_tag_options ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recent_colors  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sleep_periods  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE sleep_takeaways ENABLE ROW LEVEL SECURITY;
+ALTER TABLE habits         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE habit_entries  ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "own_planners_select" ON planners;
 CREATE POLICY "own_planners_select" ON planners FOR SELECT
@@ -305,4 +346,36 @@ CREATE POLICY "own_takeaways_update" ON sleep_takeaways FOR UPDATE
 
 DROP POLICY IF EXISTS "own_takeaways_delete" ON sleep_takeaways;
 CREATE POLICY "own_takeaways_delete" ON sleep_takeaways FOR DELETE
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_habits_select" ON habits;
+CREATE POLICY "own_habits_select" ON habits FOR SELECT
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_habits_insert" ON habits;
+CREATE POLICY "own_habits_insert" ON habits FOR INSERT
+  TO authenticated WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_habits_update" ON habits;
+CREATE POLICY "own_habits_update" ON habits FOR UPDATE
+  TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_habits_delete" ON habits;
+CREATE POLICY "own_habits_delete" ON habits FOR DELETE
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_habit_entries_select" ON habit_entries;
+CREATE POLICY "own_habit_entries_select" ON habit_entries FOR SELECT
+  TO authenticated USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_habit_entries_insert" ON habit_entries;
+CREATE POLICY "own_habit_entries_insert" ON habit_entries FOR INSERT
+  TO authenticated WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_habit_entries_update" ON habit_entries;
+CREATE POLICY "own_habit_entries_update" ON habit_entries FOR UPDATE
+  TO authenticated USING (user_id = auth.uid()) WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS "own_habit_entries_delete" ON habit_entries;
+CREATE POLICY "own_habit_entries_delete" ON habit_entries FOR DELETE
   TO authenticated USING (user_id = auth.uid());

@@ -1,4 +1,4 @@
-import { CalendarDays, MoonStar, type LucideIcon } from 'lucide-react';
+import { CalendarDays, ListChecks, MoonStar, type LucideIcon } from 'lucide-react';
 
 /**
  * Every app behind the one sign-in. They share an account and nothing else —
@@ -30,6 +30,13 @@ export const APPS = [
     name: 'Planner',
     description: 'The reusable week grid',
     icon: CalendarDays,
+    tone: 'light',
+  },
+  {
+    id: 'habits',
+    name: 'Habits',
+    description: 'Today, one day at a time',
+    icon: ListChecks,
     tone: 'light',
   },
   {

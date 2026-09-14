@@ -78,6 +78,72 @@ export default {
           500: '#f0a94c',
         },
         moon: '#f7e3b5',
+        /**
+         * The habit tracker's own palette — the third app, and the only one
+         * that had to sit beside both of the others without borrowing from
+         * either. A warm grey rather than the planner's green-grey: a page you
+         * open first thing in the morning should read as paper and daylight,
+         * not as a garden or a night sky.
+         */
+        clay: {
+          50: '#faf9f7',
+          100: '#f3f1ed',
+          200: '#e8e4dd',
+          300: '#d6d0c6',
+          400: '#aaa295',
+          500: '#837b6e',
+          600: '#665f55',
+          700: '#4e4842',
+          800: '#3a3531',
+          900: '#282421',
+        },
+        /**
+         * Iris. The active page, the primary action, the focus ring — one
+         * cool hue against all that warmth, so the single thing worth
+         * clicking is the single thing that isn't beige. Deliberately not the
+         * planner's moss: two green apps would read as one.
+         */
+        iris: {
+          50: '#f3f3fb',
+          100: '#e7e8f6',
+          200: '#d0d1ec',
+          300: '#aeb0dd',
+          400: '#8b8ecb',
+          500: '#7073b5',
+          600: '#5a5d99',
+          700: '#484a79',
+          800: '#383a5e',
+        },
+        /**
+         * The three states a habit can be in today. Muted on purpose: a page
+         * of five habits is a page of five of these, and saturated green and
+         * red at that density stops reading as information and starts reading
+         * as an alarm.
+         */
+        done: {
+          50: '#eef6f0',
+          100: '#dcecdf',
+          300: '#96c2a2',
+          500: '#5a9b6c',
+          600: '#478055',
+          700: '#386545',
+        },
+        skipped: {
+          50: '#fbf5ea',
+          100: '#f5ead4',
+          300: '#dcbd82',
+          500: '#c29a4f',
+          600: '#a47f3b',
+          700: '#826430',
+        },
+        undone: {
+          50: '#fbf1f1',
+          100: '#f5dede',
+          300: '#dda3a3',
+          500: '#bf6b6b',
+          600: '#a35353',
+          700: '#824242',
+        },
       },
       backgroundImage: {
         /** A low glow behind the page, so the dark isn't flat. */
