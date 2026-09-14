@@ -1,12 +1,11 @@
 import { useMemo, useState } from 'react';
-import { CalendarRange, Trash2 } from 'lucide-react';
+import { CalendarRange, Search, Trash2 } from 'lucide-react';
 import {
   DEFAULT_COLOR,
   DEFAULT_ICON,
   EVERY_DAY,
   HABIT_COLORS,
   HABIT_NAME_MAX,
-  ICON_KEYS,
   WEEKDAY_LABELS,
   describeFrequency,
   formatShortDate,
@@ -15,6 +14,7 @@ import {
   isoDateOf,
   nextDueDate,
   ordinal,
+  searchIcons,
   type Frequency,
   type Habit,
   type HabitDraft,
@@ -134,14 +134,16 @@ export function HabitForm({
           />
         </Field>
 
-        <div className="grid gap-6 sm:grid-cols-[1fr_auto]">
-          <Field label="Icon">
-            <IconPicker value={icon} color={color} onChange={setIcon} />
-          </Field>
-          <Field label="Colour">
-            <ColorPicker value={color} onChange={setColor} />
-          </Field>
-        </div>
+        <Field label="Colour">
+          <ColorPicker value={color} onChange={setColor} />
+        </Field>
+
+        {/* Full width, below the colour rather than beside it: the picker is a
+            searchable panel now, and a tall panel in a narrow column would
+            show four icons a row. */}
+        <Field label="Icon">
+          <IconPicker value={icon} color={color} onChange={setIcon} />
+        </Field>
 
         <Field label="Frequency">
           <FrequencyPicker value={frequency} onChange={setFrequency} />
@@ -153,6 +155,12 @@ export function HabitForm({
 
 // -- Icon and colour ---------------------------------------------------------
 
+/**
+ * Two hundred icons, so a habit can be described precisely rather than
+ * approximately. At that size a flat grid is a haystack, so there are two ways
+ * in: a search box that matches names, group names and keywords — "fajr" finds
+ * the sunrise, "quran" the scroll — and the groups themselves for browsing.
+ */
 function IconPicker({
   value,
   color,
@@ -162,34 +170,73 @@ function IconPicker({
   color: string;
   onChange: (icon: string) => void;
 }) {
+  const [query, setQuery] = useState('');
+  const groups = useMemo(() => searchIcons(query), [query]);
+  const found = groups.reduce((total, group) => total + group.keys.length, 0);
+
   return (
-    // A scrolling grid rather than a dropdown: thirty icons are quicker to
-    // recognise than to name, so they are all on screen at once.
-    <div
-      role="radiogroup"
-      aria-label="Habit icon"
-      className="grid max-h-36 grid-cols-8 gap-1.5 overflow-y-auto rounded-xl border border-clay-200 bg-clay-50/60 p-2"
-    >
-      {ICON_KEYS.map((key) => {
-        const Icon = iconFor(key);
-        const active = key === value;
-        return (
-          <button
-            key={key}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            aria-label={key}
-            onClick={() => onChange(key)}
-            className={`flex h-9 items-center justify-center rounded-lg transition-colors ${
-              active ? 'bg-white shadow-[0_1px_2px_rgba(40,36,33,0.12)]' : 'hover:bg-white/70'
-            }`}
-            style={active ? { color } : undefined}
-          >
-            <Icon className={`h-[18px] w-[18px] ${active ? '' : 'text-clay-400'}`} />
-          </button>
-        );
-      })}
+    <div className="rounded-xl border border-clay-200 bg-clay-50/60">
+      <div className="relative border-b border-clay-200/80 p-2">
+        <Search className="pointer-events-none absolute left-4 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-clay-400" />
+        <input
+          value={query}
+          placeholder="Search icons — water, read, walk, prayer…"
+          onChange={(e) => setQuery(e.target.value)}
+          // Enter in here would otherwise submit the whole form from a field
+          // that is only narrowing a list.
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.preventDefault();
+          }}
+          className="w-full rounded-lg border border-clay-200 bg-white py-1.5 pl-8 pr-3 text-xs text-clay-900 outline-none placeholder:text-clay-400 focus:border-iris-400 focus:ring-2 focus:ring-iris-100"
+        />
+      </div>
+
+      <div
+        role="radiogroup"
+        aria-label="Habit icon"
+        className="max-h-56 space-y-3 overflow-y-auto p-2"
+      >
+        {found === 0 ? (
+          <p className="px-1 py-6 text-center text-xs text-clay-400">
+            Nothing matches “{query}”. Try a plainer word.
+          </p>
+        ) : (
+          groups.map((group) => (
+            <div key={group.name}>
+              <p className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-clay-400">
+                {group.name}
+              </p>
+              <div className="grid grid-cols-9 gap-1">
+                {group.keys.map((key) => {
+                  const Icon = iconFor(key);
+                  const active = key === value;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      // The name as words, so a screen reader says "book open"
+                      // rather than spelling out a code.
+                      aria-label={key.replace(/([a-z])([A-Z0-9])/g, '$1 $2')}
+                      title={key.replace(/([a-z])([A-Z0-9])/g, '$1 $2')}
+                      onClick={() => onChange(key)}
+                      className={`flex h-8 items-center justify-center rounded-lg transition-colors ${
+                        active
+                          ? 'bg-white shadow-[0_1px_2px_rgba(40,36,33,0.12)]'
+                          : 'hover:bg-white/70'
+                      }`}
+                      style={active ? { color } : undefined}
+                    >
+                      <Icon className={`h-[17px] w-[17px] ${active ? '' : 'text-clay-400'}`} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -199,7 +246,7 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (color: str
     <div
       role="radiogroup"
       aria-label="Habit colour"
-      className="grid grid-cols-5 gap-1.5 rounded-xl border border-clay-200 bg-clay-50/60 p-2"
+      className="flex flex-wrap gap-1.5 rounded-xl border border-clay-200 bg-clay-50/60 p-2"
     >
       {HABIT_COLORS.map((swatch) => {
         const active = swatch === value;
@@ -225,54 +272,21 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (color: str
 // -- Frequency ---------------------------------------------------------------
 
 /**
- * The named schedules, and the shape each one stands for. They are points in
- * the same space Custom opens up rather than a parallel set of special cases,
- * which is what lets the picker show the right preset when an existing habit
- * is opened for editing.
+ * Two choices, not seven.
+ *
+ * Almost every habit is daily, and the rest are all different from each other —
+ * so a row of named shortcuts was mostly decoration in front of the editor that
+ * can express any of them anyway. "Every weekday" is two clicks inside Custom,
+ * and the schedules the shortcuts could *not* express no longer look like an
+ * afterthought behind a "Custom…" button.
  */
-const PRESETS: { id: string; label: string; make: (current: Frequency) => Frequency }[] = [
-  { id: 'daily', label: 'Every day', make: () => ({ kind: 'weekly', weekdays: [0, 1, 2, 3, 4, 5, 6] }) },
-  { id: 'weekdays', label: 'Every weekday', make: () => ({ kind: 'weekly', weekdays: [0, 1, 2, 3, 4] }) },
-  { id: 'weekend', label: 'Every weekend', make: () => ({ kind: 'weekly', weekdays: [5, 6] }) },
-  {
-    id: 'weekly',
-    label: 'Certain days',
-    // Carries the current selection over where it can, so picking "Certain
-    // days" after "Every weekend" starts from Sat/Sun rather than from blank.
-    make: (current) => ({
-      kind: 'weekly',
-      weekdays: weekdaysOf(current).length > 0 ? weekdaysOf(current) : [0],
-    }),
-  },
-  {
-    id: 'fortnightly',
-    label: 'Every 2 weeks',
-    make: (current) => ({
-      kind: 'interval',
-      unit: 'week',
-      every: 2,
-      weekdays: weekdaysOf(current).slice(0, 1).length > 0 ? weekdaysOf(current).slice(0, 1) : [0],
-    }),
-  },
-  { id: 'monthly', label: 'Every month', make: () => ({ kind: 'monthly', days: [1] }) },
-];
-
 function weekdaysOf(freq: Frequency): number[] {
   return freq.kind === 'monthly' ? [] : freq.weekdays;
 }
 
-/** Which preset a frequency is, or 'custom' when it is none of them. */
-function presetOf(freq: Frequency): string {
-  if (freq.kind === 'weekly') {
-    const set = freq.weekdays.join(',');
-    if (set === '0,1,2,3,4,5,6') return 'daily';
-    if (set === '0,1,2,3,4') return 'weekdays';
-    if (set === '5,6') return 'weekend';
-    return 'weekly';
-  }
-  if (freq.kind === 'interval' && freq.unit === 'week' && freq.every === 2) return 'fortnightly';
-  if (freq.kind === 'monthly' && freq.days.length === 1) return 'monthly';
-  return 'custom';
+/** Whether a frequency is plain "every day", which is the only named case. */
+function isEveryDay(freq: Frequency): boolean {
+  return freq.kind === 'weekly' && freq.weekdays.length === 7;
 }
 
 const CUSTOM_MODES = [
@@ -291,10 +305,9 @@ function modeOf(freq: Frequency): CustomMode {
 }
 
 /**
- * The whole recurrence editor: six named schedules, and a Custom panel that
- * opens the shape underneath them. The preview line at the bottom is doing
- * real work — "every 2 weeks" is ambiguous until you can see which Tuesdays
- * it actually means.
+ * The recurrence editor: every day, or custom. The preview line at the bottom
+ * is doing real work — "every 2 weeks" is ambiguous until you can see which
+ * Tuesdays it actually means.
  */
 export function FrequencyPicker({
   value,
@@ -303,8 +316,13 @@ export function FrequencyPicker({
   value: Frequency;
   onChange: (freq: Frequency) => void;
 }) {
-  const preset = presetOf(value);
-  const [custom, setCustom] = useState(preset === 'custom');
+  const daily = isEveryDay(value);
+  /**
+   * Custom stays open once chosen, even while the schedule underneath happens
+   * to be every day — otherwise ticking the seventh weekday would close the
+   * panel out from under the cursor.
+   */
+  const [custom, setCustom] = useState(!daily);
   const mode = modeOf(value);
 
   // Previewed against a habit starting today, which is what a new one does.
@@ -326,63 +344,28 @@ export function FrequencyPicker({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1.5">
-        {PRESETS.map((option) => {
-          const active = !custom && preset === option.id;
-          return (
-            <button
-              key={option.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => {
-                setCustom(false);
-                onChange(option.make(value));
-              }}
-              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                active
-                  ? 'border-iris-200 bg-iris-50 text-iris-700'
-                  : 'border-clay-200 text-clay-600 hover:bg-clay-100'
-              }`}
-            >
-              {option.label}
-            </button>
-          );
-        })}
-        <button
-          type="button"
-          aria-pressed={custom || preset === 'custom'}
-          onClick={() => setCustom(true)}
-          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-            custom || preset === 'custom'
-              ? 'border-iris-200 bg-iris-50 text-iris-700'
-              : 'border-clay-200 text-clay-600 hover:bg-clay-100'
-          }`}
-        >
-          Custom…
-        </button>
+        <FrequencyChoice
+          label="Every day"
+          active={!custom}
+          onClick={() => {
+            setCustom(false);
+            onChange(EVERY_DAY);
+          }}
+        />
+        <FrequencyChoice
+          label="Custom"
+          active={custom}
+          onClick={() => {
+            setCustom(true);
+            // Opens on weekdays, the commonest thing anyone wants that isn't
+            // daily — and a blank panel would be a worse starting point than
+            // one that already says something.
+            if (daily) onChange({ kind: 'weekly', weekdays: [0, 1, 2, 3, 4] });
+          }}
+        />
       </div>
 
-      {/* The days a preset leaves open are asked for inline rather than
-          hidden behind Custom: "certain days" and "every 2 weeks" are not
-          finished schedules on their own. */}
-      {!custom && preset === 'weekly' && value.kind === 'weekly' && (
-        <WeekdayPicker
-          value={value.weekdays}
-          onChange={(weekdays) => onChange({ kind: 'weekly', weekdays })}
-        />
-      )}
-
-      {!custom && preset === 'fortnightly' && value.kind === 'interval' && (
-        <WeekdayPicker
-          value={value.weekdays}
-          onChange={(weekdays) => onChange({ ...value, weekdays })}
-        />
-      )}
-
-      {!custom && preset === 'monthly' && value.kind === 'monthly' && (
-        <MonthDayPicker value={value.days} onChange={(days) => onChange({ kind: 'monthly', days })} />
-      )}
-
-      {(custom || preset === 'custom') && (
+      {custom && (
         <div className="space-y-3 rounded-xl border border-clay-200 bg-clay-50/60 p-3">
           <Segmented
             options={CUSTOM_MODES}
@@ -442,6 +425,31 @@ export function FrequencyPicker({
         )}
       </p>
     </div>
+  );
+}
+
+function FrequencyChoice({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={`rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors ${
+        active
+          ? 'border-iris-200 bg-iris-50 text-iris-700'
+          : 'border-clay-200 text-clay-600 hover:bg-clay-100'
+      }`}
+    >
+      {label}
+    </button>
   );
 }
 

@@ -16,10 +16,11 @@ references this.
     { "kind": "monthly",  "days": [1, 15] }
 
 "Every day", "every Monday", "every weekday", "every weekend" are all the
-first shape with a different set — so the presets in the UI are not a separate
-concept from Custom, they are named points in the same space. Columns would
-have meant a migration for every recurrence the app learns to express, and a
-row of nulls for each of the ones it already knows.
+first shape with a different set — which is why the UI can offer one named
+schedule and one editor rather than a row of shortcuts standing in front of
+the same three shapes. Columns would have meant a migration for every
+recurrence the app learns to express, and a row of nulls for each of the ones
+it already knows.
 
 The app never trusts the shape blindly: `parseFrequency` in src/lib/habits.ts
 falls back to daily on anything it does not recognise, so a hand-edited row
