@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { CalendarDays, Loader2, LogOut, MoonStar, Plus, X } from 'lucide-react';
+import { Loader2, LogOut, MoonStar, Plus, X } from 'lucide-react';
+import { AppSwitcher } from '@/components/AppSwitcher';
 import { useAuth } from '@/lib/auth';
-import { useView } from '@/lib/view';
 import { useSleep } from '@/lib/sleepStore';
 import { useTakeaways } from '@/lib/takeaways';
 import { nightSlots, type SleepPeriod } from '@/lib/sleep';
@@ -32,7 +32,6 @@ type Page = (typeof PAGES)[number]['value'];
 
 export function SleepApp({ userId }: { userId: string }) {
   const { user, signOut } = useAuth();
-  const { setView } = useView();
   const store = useSleep(userId);
   const takeaways = useTakeaways(userId);
 
@@ -85,16 +84,10 @@ export function SleepApp({ userId }: { userId: string }) {
               <Plus className="h-4 w-4" />
               Add sleep
             </button>
-            {/* Back to the other half of the app. They share an account and
-                nothing else, so this is the only link between them. */}
-            <button
-              onClick={() => setView('planner')}
-              title="Open the planner"
-              className="inline-flex items-center gap-1.5 rounded-full border border-night-600 px-3 py-1.5 text-xs font-medium text-night-300 transition-colors hover:bg-night-800"
-            >
-              <CalendarDays className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Planner</span>
-            </button>
+            {/* Out to the other apps behind this sign-in. They share an
+                account and nothing else, so this is the only link between
+                them. */}
+            <AppSwitcher />
             <button
               onClick={signOut}
               title={`Sign out${user?.email ? ` (${user.email})` : ''}`}

@@ -1,20 +1,24 @@
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react';
+import { DEFAULT_APP_ID, isAppId, type AppId } from '@/lib/apps';
 
 /**
- * The two halves of the app. They share an account and nothing else — no
- * planner reads sleep, no sleep reads a planner — so this is a switch between
- * two apps rather than a route into one.
+ * Which of the apps in `@/lib/apps` is open. They share an account and
+ * nothing else, so this is a switch between apps rather than a route into
+ * one — and the set of them lives in the registry, not here.
  */
-export type AppView = 'planner' | 'sleep';
+export type AppView = AppId;
 
 const STORAGE_KEY = 'weekly-planner:view';
 
 function readStored(): AppView {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'sleep' ? 'sleep' : 'planner';
+    const stored = localStorage.getItem(STORAGE_KEY);
+    // An id left behind by an app that has since been removed falls back
+    // rather than mounting nothing.
+    return isAppId(stored) ? stored : DEFAULT_APP_ID;
   } catch {
     // Private-mode Safari and friends: losing the memory is fine, throwing isn't.
-    return 'planner';
+    return DEFAULT_APP_ID;
   }
 }
 
@@ -22,7 +26,7 @@ type ViewState = { view: AppView; setView: (view: AppView) => void };
 
 const ViewContext = createContext<ViewState | null>(null);
 
-/** Remembers which half was open across reloads. */
+/** Remembers which app was open across reloads. */
 export function ViewProvider({ children }: { children: ReactNode }) {
   const [view, setViewState] = useState<AppView>(readStored);
 

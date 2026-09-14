@@ -59,12 +59,17 @@ function Gate() {
   if (loading) return <Spinner />;
   if (!user) return <SignIn />;
 
-  // Two apps behind one sign-in: the planner and the sleep tracker share an
-  // account and nothing else, so this is a switch rather than a route.
+  // Several apps behind one sign-in: they share an account and nothing else,
+  // so this is a switch rather than a route. Each app listed in '@/lib/apps'
+  // needs a branch here — the switcher reads that list and needs no edit.
   // Keyed by user so switching accounts remounts with a clean slate rather
   // than showing the previous account's data until the refetch lands.
-  if (view === 'sleep') return <SleepApp key={user.id} userId={user.id} />;
-  return <Workspace key={user.id} userId={user.id} />;
+  switch (view) {
+    case 'sleep':
+      return <SleepApp key={user.id} userId={user.id} />;
+    case 'planner':
+      return <Workspace key={user.id} userId={user.id} />;
+  }
 }
 
 function App() {

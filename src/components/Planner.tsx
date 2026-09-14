@@ -37,8 +37,9 @@ import { DayTagMenu } from './DayTagMenu';
 import { EditPanel } from './EditPanel';
 import { PeopleAvatars } from './People';
 import { NewPlannerButton, PlannerSwitcher } from './PlannerSwitcher';
+import { AppSwitcher } from './AppSwitcher';
 import { useView } from '@/lib/view';
-import { CalendarDays, Loader2, LogOut, MoonStar, Repeat, Trash2, X } from 'lucide-react';
+import { CalendarDays, Loader2, LogOut, Repeat, Trash2, X } from 'lucide-react';
 
 /** A drag in progress: an anchor cell plus wherever the pointer is now. */
 type Selection = {
@@ -702,16 +703,9 @@ export function Planner({
               onCancel={() => setConfirmingClear(false)}
               onConfirm={clearWeek}
             />
-            {/* Into the other half of the app. Nothing is carried across —
-                the sleep tracker shares the account and nothing else. */}
-            <button
-              onClick={() => setView('sleep')}
-              title="Open the sleep tracker"
-              className="inline-flex items-center gap-1.5 rounded-full border border-sage-200 px-3 py-1.5 text-xs font-medium text-sage-600 transition-colors hover:bg-sage-100"
-            >
-              <MoonStar className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Sleep</span>
-            </button>
+            {/* Into the other apps behind this sign-in. Nothing is carried
+                across — they share the account and nothing else. */}
+            <AppSwitcher />
             {/* Icon only, like the tracker's: the account it signs out of is
                 named in the tooltip, which is where it was already read. */}
             <button
